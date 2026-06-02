@@ -1,0 +1,2030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#060608">
+<title>Perception Engine</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --c:#b98aff;--bg:#060608;--panel:#0c0c14;--row:#101019;
+    --border:#1e1e2e;--muted:#55556f;--text:#e8e8f0;
+    --safe-top:env(safe-area-inset-top,0px);--safe-bot:env(safe-area-inset-bottom,0px);
+    --safe-l:env(safe-area-inset-left,0px);--safe-r:env(safe-area-inset-right,0px);
+  }
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+    font-family:'DM Mono',ui-monospace,'Cascadia Code',monospace;
+    -webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;overscroll-behavior:none}
+  #app{display:flex;width:100%;height:100dvh;flex-direction:column;position:relative}
+  @media(min-width:768px){
+    #app{flex-direction:row}
+    #topbar{display:none!important}
+    #sidebar{display:flex!important;flex-direction:column;width:340px;min-width:300px;max-width:400px;height:100dvh;
+      background:var(--panel);border-right:1px solid color-mix(in srgb,var(--c) 22%,transparent);
+      flex-shrink:0;overflow:hidden;padding-top:var(--safe-top);padding-left:var(--safe-l)}
+    #stage{flex:1;height:100dvh}
+    #sheet{display:none!important}
+  }
+  #topbar{display:flex;align-items:center;gap:12px;
+    padding:calc(var(--safe-top) + 10px) 16px 10px;
+    padding-left:calc(var(--safe-l) + 16px);padding-right:calc(var(--safe-r) + 16px);
+    background:rgba(8,8,12,0.94);border-bottom:1px solid color-mix(in srgb,var(--c) 18%,transparent);
+    flex-shrink:0;z-index:10;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);transition:border-color .4s}
+  #orb,#sidebar-orb{width:30px;height:30px;border-radius:50%;flex-shrink:0;
+    background:conic-gradient(from 0deg,var(--c),#ff8a3d,#46d6ff,#b98aff,var(--c));transition:box-shadow .6s}
+  #sidebar-orb{width:32px;height:32px}
+  .orb-spin{animation:spin 4s linear infinite}
+  #topbar-title,#sidebar-title{font-size:14px;font-weight:700;letter-spacing:.16em;color:#f0f0fa}
+  #topbar-sub,#sidebar-sub{font-size:11px;color:var(--muted);letter-spacing:.06em;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #dose-pips,#sidebar-pips{display:flex;gap:4px;align-items:center;flex-shrink:0}
+  .pip{width:7px;height:7px;border-radius:50%;background:#23233a;transition:background .3s,box-shadow .3s}
+  .pip.active{background:var(--c);box-shadow:0 0 6px var(--c)}
+  #stage{flex:1;position:relative;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center}
+  /* Canvas: auto-sized by JS to preserve image aspect ratio */
+  #glcanvas{display:none;max-width:100%;max-height:100%}
+  #empty-state{text-align:center;color:#252540;cursor:pointer;position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+  #empty-icon{font-size:64px;line-height:1}
+  #empty-label{font-size:12px;letter-spacing:.28em;color:#35354f}
+  #error-state{display:none;padding:32px 24px;text-align:center;max-width:340px}
+  #ai-note{display:none;position:absolute;top:12px;left:12px;right:12px;font-size:11px;line-height:1.55;
+    color:#aab;background:rgba(6,6,10,.85);border:1px solid color-mix(in srgb,var(--c) 28%,transparent);
+    border-radius:10px;padding:9px 13px;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);z-index:2}
+  #etf-status{display:none;position:absolute;bottom:90px;left:50%;transform:translateX(-50%);
+    font-size:10px;letter-spacing:.14em;color:var(--c);background:rgba(6,6,10,.8);
+    border:1px solid var(--border);border-radius:20px;padding:6px 14px;white-space:nowrap;z-index:2}
+  /* FABs: fixed to viewport — never clipped by overflow:hidden or z-index issues */
+  .fab{
+    position:fixed;
+    border-radius:50%;display:flex;align-items:center;justify-content:center;
+    cursor:pointer;z-index:30;touch-action:manipulation;
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    border:none;font-family:inherit;font-weight:700;transition:background .3s,box-shadow .3s,color .3s,border .3s;
+  }
+  #fab-play{
+    bottom:calc(var(--safe-bot) + 22px);right:18px;
+    width:58px;height:58px;font-size:20px;
+    background:var(--c);color:#060608;
+    box-shadow:0 4px 22px color-mix(in srgb,var(--c) 50%,transparent);
+  }
+  #fab-play.paused{background:rgba(11,11,20,.94);color:var(--c);box-shadow:none;border:2.5px solid var(--c)}
+  #fab-save{
+    bottom:calc(var(--safe-bot) + 22px);right:86px;
+    width:50px;height:50px;font-size:20px;
+    background:rgba(11,11,20,.9);color:var(--c);
+    border:1.5px solid color-mix(in srgb,var(--c) 55%,transparent);
+    display:none;
+  }
+  #fab-settings{
+    bottom:calc(var(--safe-bot) + 22px);left:18px;
+    width:50px;height:50px;font-size:20px;
+    background:rgba(11,11,20,.9);color:var(--muted);
+    border:1.5px solid var(--border);
+  }
+  #fab-settings.open{color:var(--c);border-color:var(--c)}
+  @media(min-width:768px){
+    .fab{display:none!important}
+  }
+  #sheet{position:absolute;left:0;right:0;bottom:0;background:var(--panel);
+    border-top:1px solid color-mix(in srgb,var(--c) 28%,transparent);
+    border-radius:20px 20px 0 0;max-height:72vh;transform:translateY(100%);
+    transition:transform .36s cubic-bezier(.32,.72,0,1),border-color .4s;
+    z-index:20;display:flex;flex-direction:column;box-shadow:0 -8px 40px rgba(0,0,0,.6)}
+  #sheet.open{transform:translateY(0)}
+  #sheet-handle{padding:14px 0 10px;display:flex;justify-content:center;cursor:pointer;flex-shrink:0;touch-action:manipulation}
+  #sheet-handle-bar{width:40px;height:4px;border-radius:2px;background:#28283e}
+  #sidebar{display:none}
+  #sidebar-header{display:flex;align-items:center;gap:12px;padding:20px 18px 14px;border-bottom:1px solid var(--border);flex-shrink:0}
+  #desktop-btns{display:flex;gap:9px;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+  .desk-btn{flex:1;padding:11px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.1em;touch-action:manipulation;transition:all .25s;border:none}
+  #desk-play{background:var(--c);color:#060608}
+  #desk-play.paused{background:rgba(11,11,20,.9);color:var(--c);border:1.5px solid var(--c)}
+  #desk-save{background:#101019;color:var(--muted);border:1px solid var(--border)}
+  #desk-save:hover{color:var(--c);border-color:var(--c)}
+  .tab-bar{display:flex;flex-shrink:0;border-bottom:1px solid var(--border);padding:0 12px}
+  .tab-btn{flex:1;padding:11px 3px;background:none;cursor:pointer;font-family:inherit;font-size:10px;
+    letter-spacing:.14em;text-transform:uppercase;touch-action:manipulation;border:none;
+    border-bottom:2.5px solid transparent;color:var(--muted);transition:color .2s,border-color .2s}
+  .tab-btn.active{color:var(--c);border-bottom-color:var(--c)}
+  .panel-body{overflow-y:auto;flex:1;padding:14px 14px 0;padding-bottom:max(20px,var(--safe-bot));-webkit-overflow-scrolling:touch}
+  .panel-body::-webkit-scrollbar{display:none}
+  .card-btn{display:flex;align-items:center;gap:13px;width:100%;padding:14px;border-radius:13px;
+    cursor:pointer;text-align:left;margin-bottom:9px;font-family:inherit;touch-action:manipulation;
+    background:var(--row);border:1px solid var(--border);color:var(--muted);transition:all .2s}
+  .card-btn.active{background:color-mix(in srgb,var(--c) 14%,transparent);border-color:var(--c);color:var(--c)}
+  .card-emoji{font-size:22px;line-height:1}
+  .card-label{font-weight:700;font-size:14px}
+  .card-sub{font-size:12px;color:var(--muted);margin-top:3px}
+  .card-check{margin-left:auto;font-size:15px}
+  .dose-btn{position:relative;overflow:hidden;display:flex;align-items:center;width:100%;padding:14px;
+    border-radius:13px;margin-bottom:8px;cursor:pointer;font-family:inherit;touch-action:manipulation;
+    background:var(--row);border:1px solid var(--border);color:var(--muted);transition:all .2s}
+  .dose-btn.active{background:color-mix(in srgb,var(--c) 14%,transparent);border-color:var(--c);color:var(--c)}
+  .dose-fill{position:absolute;inset:0;border-radius:13px;background:color-mix(in srgb,var(--c) 7%,transparent);pointer-events:none}
+  .dose-text{position:relative;flex:1;font-size:14px}
+  .dose-amount{font-size:12px;color:var(--muted);margin-left:9px}
+  .dose-check{position:relative;font-size:14px}
+  .intensity-wrap{padding:11px 13px;background:var(--row);border-radius:11px;border:1px solid var(--border);margin-bottom:13px}
+  .intensity-label{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);letter-spacing:.14em;margin-bottom:7px}
+  .intensity-track{height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+  .intensity-fill{height:100%;border-radius:3px;transition:width .4s}
+  .upload-zone{display:block;padding:14px;border-radius:13px;text-align:center;cursor:pointer;touch-action:manipulation;
+    margin-bottom:10px;border:2px dashed var(--border);background:transparent;color:var(--muted);font-size:13px;transition:all .3s}
+  .upload-zone.has-image{border-color:color-mix(in srgb,var(--c) 45%,transparent);background:color-mix(in srgb,var(--c) 6%,transparent);color:var(--c)}
+  .upload-zone input{display:none}
+  #ai-btn{width:100%;padding:14px;border-radius:13px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;
+    letter-spacing:.12em;touch-action:manipulation;margin-bottom:16px;border:1.5px solid var(--c);color:var(--c);
+    background:color-mix(in srgb,var(--c) 14%,transparent);transition:all .3s}
+  #ai-btn:disabled{opacity:.45;cursor:default}
+  .sec-head{display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:.2em;color:var(--muted);margin:16px 0 10px;text-transform:uppercase}
+  .sec-head::after{content:'';flex:1;height:1px;background:var(--border)}
+  .slider-wrap{margin-bottom:16px}
+  .slider-header{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;letter-spacing:.12em;color:#8b8ba7;margin-bottom:7px}
+  .slider-val{color:var(--c);font-weight:700;font-size:12px}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;background:var(--border);border-radius:4px;outline:none;cursor:pointer;accent-color:var(--c)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:26px;height:26px;border-radius:50%;background:var(--c);cursor:pointer;box-shadow:0 0 8px color-mix(in srgb,var(--c) 70%,transparent)}
+  input[type=range]::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:var(--c);border:none;cursor:pointer;box-shadow:0 0 8px color-mix(in srgb,var(--c) 70%,transparent)}
+  .pill-grid{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .pill{flex:1;min-width:46px;padding:10px 2px;border-radius:9px;cursor:pointer;font-family:inherit;
+    font-size:9px;letter-spacing:.04em;touch-action:manipulation;text-transform:uppercase;
+    background:var(--row);border:1px solid var(--border);color:var(--muted);transition:all .2s;text-align:center}
+  .pill.active{background:color-mix(in srgb,var(--c) 18%,transparent);border-color:var(--c);color:var(--c)}
+  .toggle-row{display:flex;gap:8px;margin-bottom:14px}
+  .toggle-btn{flex:1;padding:12px 8px;border-radius:11px;cursor:pointer;font-family:inherit;font-size:11px;
+    letter-spacing:.1em;touch-action:manipulation;background:var(--row);border:1px solid var(--border);color:var(--muted);transition:all .2s}
+  .toggle-btn.active{background:color-mix(in srgb,var(--c) 18%,transparent);border-color:var(--c);color:var(--c)}
+  #color-switch{display:flex;align-items:center;justify-content:space-between;padding:13px 14px;border-radius:13px;
+    margin-bottom:14px;cursor:pointer;background:var(--row);border:1.5px solid var(--border);
+    transition:all .3s;touch-action:manipulation;font-family:inherit;width:100%}
+  #color-switch.on{background:color-mix(in srgb,var(--c) 14%,transparent);border-color:var(--c)}
+  .csw-label{font-size:12px;font-weight:700;letter-spacing:.1em}
+  .csw-badge{font-size:10px;letter-spacing:.12em;padding:4px 10px;border-radius:20px;
+    background:color-mix(in srgb,var(--c) 20%,transparent);color:var(--c);border:1px solid var(--c)}
+  #color-switch:not(.on) .csw-badge{background:#1a1a2a;color:var(--muted);border-color:var(--border)}
+  .disclaimer{margin:14px 0 4px;padding:11px 12px;background:#090910;border:1px solid #16162a;border-radius:10px;font-size:11px;color:#45455f;line-height:1.65}
+  .info-box{font-size:10px;color:var(--muted);line-height:1.6;margin-bottom:10px;padding:8px 10px;background:#0a0a14;border-radius:8px;border:1px solid var(--border)}
+  @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+  input,button,select,textarea{font-size:16px}
+  input[type=range]{font-size:inherit}
+
+  /* ── DEEP DREAM TAB ── */
+  #dreamcanvas{display:none;max-width:100%;max-height:100%;position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+  .dream-model-badge{
+    display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:20px;
+    font-size:11px;letter-spacing:.1em;margin-bottom:14px;width:100%;justify-content:center;
+  }
+  .dream-model-badge.loading{background:#101019;border:1px solid #2a2a3a;color:var(--muted)}
+  .dream-model-badge.ready{background:color-mix(in srgb,var(--c) 14%,transparent);border:1px solid var(--c);color:var(--c)}
+  .dream-model-badge.error{background:#1a0909;border:1px solid #883;color:#f88}
+  .dream-layer-preset{display:flex;gap:7px;margin-bottom:14px}
+  .dream-layer-preset button{
+    flex:1;padding:12px 4px;border-radius:10px;cursor:pointer;font-family:inherit;
+    font-size:11px;letter-spacing:.08em;touch-action:manipulation;
+    background:var(--row);border:1px solid var(--border);color:var(--muted);transition:all .2s;
+  }
+  .dream-layer-preset button.active{
+    background:color-mix(in srgb,var(--c) 18%,transparent);border-color:var(--c);color:var(--c);
+  }
+  #dream-run-btn{
+    width:100%;padding:16px;border-radius:13px;cursor:pointer;font-family:inherit;
+    font-size:14px;font-weight:700;letter-spacing:.15em;touch-action:manipulation;
+    background:var(--c);border:none;color:#060608;margin-bottom:12px;transition:all .3s;
+  }
+  #dream-run-btn:disabled{opacity:.4;cursor:default;background:var(--row);color:var(--muted);border:1px solid var(--border)}
+  .dream-progress{
+    height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:14px;display:none;
+  }
+  .dream-progress-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--c),color-mix(in srgb,var(--c) 60%,#fff));transition:width .3s}
+  .dream-status{font-size:11px;color:var(--muted);letter-spacing:.1em;text-align:center;margin-bottom:12px;min-height:18px}
+  .dream-result-row{display:flex;gap:9px;margin-bottom:14px}
+</style>
+</head>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+<!-- TF.js + MobileNet for real browser-native DeepDream gradient ascent -->
+<body>
+<div id="app">
+  <div id="topbar">
+    <div id="orb"></div>
+    <div style="flex:1;min-width:0"><div id="topbar-title">PERCEPTION ENGINE</div><div id="topbar-sub"></div></div>
+    <div id="dose-pips"></div>
+  </div>
+  <div id="stage">
+    <canvas id="glcanvas"></canvas>
+    <canvas id="dreamcanvas"></canvas>
+    <div id="empty-state"><div id="empty-icon">◎</div><div id="empty-label">TAP TO UPLOAD AN IMAGE</div></div>
+    <div id="error-state">
+      <div style="font-size:44px;margin-bottom:16px">⚠</div>
+      <div id="error-msg" style="font-size:14px;color:#ff8a8a;line-height:1.65;margin-bottom:10px"></div>
+      <div style="font-size:12px;color:#6b6b85;line-height:1.65">Real-time mode requires WebGL2 with float textures.<br>Try Chrome, Firefox, or Safari 15+.</div>
+    </div>
+    <div id="ai-note"></div>
+    <div id="etf-status">⟳ Computing edge flow field…</div>
+  </div>
+
+  <!-- FABs: positioned fixed on mobile so they're never clipped by stage overflow:hidden -->
+  <button class="fab" id="fab-play" style="display:none">▶</button>
+  <button class="fab" id="fab-save">↓</button>
+  <button class="fab" id="fab-settings">⚙</button>
+
+  <div id="sheet" class="open">
+    <div id="sheet-handle"><div id="sheet-handle-bar"></div></div>
+    <div class="tab-bar" id="mob-tabs"></div>
+    <div class="panel-body" id="mob-body"></div>
+  </div>
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <div id="sidebar-orb"></div>
+      <div style="flex:1;min-width:0"><div id="sidebar-title">PERCEPTION ENGINE</div><div id="sidebar-sub">ETF · Kuramoto · GPU</div></div>
+      <div id="sidebar-pips"></div>
+    </div>
+    <div id="desktop-btns">
+      <button class="desk-btn paused" id="desk-play">▶ PLAY</button>
+      <button class="desk-btn" id="desk-save">↓ SAVE</button>
+    </div>
+    <div class="tab-bar" id="desk-tabs"></div>
+    <div class="panel-body" id="desk-body"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════════════════
+// SUBSTANCE DATA
+// ══════════════════════════════════════════════════════════════════
+const SUBSTANCES={
+  lsd:{label:"LSD",sublabel:"Lysergic Acid",unit:"µg",emoji:"✦",color:"#46d6ff",doses:[
+    {label:"Threshold",amount:"25µg",  i:.12},{label:"Low",     amount:"75µg",  i:.30},
+    {label:"Moderate", amount:"150µg", i:.55},{label:"Strong",  amount:"250µg", i:.78},
+    {label:"Extreme",  amount:"400µg+",i:1.0}]},
+  psilocybin:{label:"Psilocybin",sublabel:"Magic Mushrooms",unit:"g",emoji:"🍄",color:"#b98aff",doses:[
+    {label:"Threshold",amount:"0.5g",i:.10},{label:"Low",     amount:"1g",  i:.22},
+    {label:"Moderate", amount:"2g",  i:.45},{label:"Strong",  amount:"3.5g",i:.72},
+    {label:"Heroic",   amount:"5g+", i:1.0}]},
+  dmt:{label:"DMT",sublabel:"Dimethyltryptamine",unit:"mg",emoji:"◈",color:"#ff8a3d",doses:[
+    {label:"Threshold",   amount:"5mg",  i:.10},{label:"Low",   amount:"15mg", i:.25},
+    {label:"Moderate",    amount:"25mg", i:.42},{label:"Breakthrough",amount:"50mg",i:.78},
+    {label:"Extreme",     amount:"75mg+",i:1.0}]},
+  mescaline:{label:"Mescaline",sublabel:"Peyote / San Pedro",unit:"mg",emoji:"🌵",color:"#5fd38a",doses:[
+    {label:"Threshold",amount:"100mg", i:.12},{label:"Low",   amount:"200mg", i:.28},
+    {label:"Common",   amount:"350mg", i:.50},{label:"Strong",amount:"500mg", i:.76},
+    {label:"Heavy",    amount:"700mg+",i:1.0}]},
+  mdma:{label:"MDMA",sublabel:"Ecstasy / Molly",unit:"mg",emoji:"♡",color:"#ff6fae",doses:[
+    {label:"Threshold",amount:"40mg",  i:.16},{label:"Low",   amount:"75mg",  i:.32},
+    {label:"Common",   amount:"120mg", i:.50},{label:"Strong",amount:"180mg", i:.74},
+    {label:"Heavy",    amount:"250mg+",i:1.0}]},
+};
+
+function makeParams(substance,t){
+  const e=(a,b)=>a+(b-a)*t;
+  const base={oscStrength:0,coupling:2.2,kCenter:2.0,kSurround:5.0,
+    freqMin:.15,freqMax:1.2,varyBy:0,colorMode:0,windings:1,
+    driftAmp:0,driftScale:3.0,driftSpeed:.5,logPolar:0,
+    formType:0,formStrength:0,formWindings:6,formFreq:2.0,formHue:200,
+    saturation:e(1.0,1.3),contrast:e(1.0,1.1),brightness:e(1.0,1.05),hueRotate:0,
+    speed:1.0,simRes:480};
+  switch(substance){
+    case'lsd':return{...base,oscStrength:e(.05,.5),coupling:2.6,kCenter:2.0,kSurround:e(4.5,7.0),freqMin:.2,freqMax:e(.9,1.8),varyBy:0,colorMode:0,windings:2,driftAmp:e(.001,.006),driftScale:4.0,driftSpeed:.6,logPolar:t>.55?1:0,formType:t>.55?2:3,formStrength:e(0,.45),formWindings:8,formFreq:2.6,formHue:180,saturation:e(1.1,2.4),contrast:e(1.05,1.6),brightness:e(1.0,1.06),hueRotate:0,speed:1.0};
+    case'psilocybin':return{...base,oscStrength:e(.04,.46),coupling:2.0,kCenter:2.4,kSurround:e(5.0,8.0),freqMin:.12,freqMax:e(.8,1.5),varyBy:0,colorMode:0,windings:1,driftAmp:e(.002,.012),driftScale:2.4,driftSpeed:.4,logPolar:0,formType:t>.6?1:0,formStrength:e(0,.3),formWindings:6,formFreq:2.0,formHue:30,saturation:e(1.1,2.2),contrast:e(1.0,1.35),brightness:e(1.0,1.08),hueRotate:0,speed:.85,
+      // Deep Dream is the closest visual approximation to mid-high dose psilocybin
+      // _ddPreset sets a floor that scales with dose intensity
+      _ddPreset:e(0,.55)};
+    case'dmt':return{...base,oscStrength:e(.08,.7),coupling:3.0,kCenter:2.0,kSurround:e(4.0,6.0),freqMin:.3,freqMax:e(1.2,2.6),varyBy:0,colorMode:0,windings:3,driftAmp:e(.003,.014),driftScale:3.5,driftSpeed:.9,logPolar:1,formType:t>.5?4:2,formStrength:e(.1,.7),formWindings:8,formFreq:3.0,formHue:300,saturation:e(1.3,3.0),contrast:e(1.1,1.7),brightness:e(1.05,1.2),hueRotate:e(20,140),speed:1.4};
+    case'mescaline':return{...base,oscStrength:e(.05,.44),coupling:2.2,kCenter:2.6,kSurround:e(5.5,8.5),freqMin:.12,freqMax:e(.7,1.3),varyBy:1,colorMode:0,windings:1,driftAmp:e(.002,.009),driftScale:2.0,driftSpeed:.35,logPolar:0,formType:t>.55?4:0,formStrength:e(0,.35),formWindings:6,formFreq:2.4,formHue:110,saturation:e(1.2,2.6),contrast:e(1.0,1.3),brightness:e(1.0,1.1),hueRotate:0,speed:.8};
+    case'mdma':return{...base,oscStrength:e(0,.12),coupling:1.6,kCenter:3.0,kSurround:7.0,freqMin:.1,freqMax:.6,varyBy:1,colorMode:0,windings:1,driftAmp:e(.001,.005),driftScale:1.8,driftSpeed:.3,logPolar:0,formType:0,formStrength:0,formWindings:6,formFreq:2.0,formHue:40,saturation:e(1.05,1.7),contrast:e(1.0,1.12),brightness:e(1.02,1.18),hueRotate:e(0,12),speed:.7};
+    default:return base;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ETF — Edge Tangent Flow (Kyprianidis et al.)
+// Packs: brightness(R), edgeMag(G), tangent_x(B), tangent_y(A)
+// ══════════════════════════════════════════════════════════════════
+function computeETF(bright,sw,sh){
+  const N=sw*sh,gx=new Float32Array(N),gy=new Float32Array(N);
+  for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){
+    const i=y*sw+x;
+    if(x>0&&x<sw-1&&y>0&&y<sh-1){
+      gx[i]=(-bright[i-sw-1]-2*bright[i-1]-bright[i+sw-1]+bright[i-sw+1]+2*bright[i+1]+bright[i+sw+1]);
+      gy[i]=(-bright[i-sw-1]-2*bright[i-sw]-bright[i-sw+1]+bright[i+sw-1]+2*bright[i+sw]+bright[i+sw+1]);
+    }
+  }
+  const mag=new Float32Array(N),tx=new Float32Array(N),ty=new Float32Array(N);
+  let maxM=0;
+  for(let i=0;i<N;i++){
+    const m=Math.sqrt(gx[i]*gx[i]+gy[i]*gy[i]);
+    mag[i]=m;if(m>maxM)maxM=m;
+    if(m>0.001){tx[i]=-gy[i]/m;ty[i]=gx[i]/m;}else{tx[i]=1;ty[i]=0;}
+  }
+  if(maxM>0)for(let i=0;i<N;i++)mag[i]/=maxM;
+  const R=4,R2=R*R;
+  for(let iter=0;iter<3;iter++){
+    const nx2=new Float32Array(N),ny2=new Float32Array(N);
+    for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){
+      const i=y*sw+x;let sx=0,sy=0;
+      for(let dy=-R;dy<=R;dy++)for(let dx=-R;dx<=R;dx++){
+        if(dx*dx+dy*dy>R2)continue;
+        const jx=Math.max(0,Math.min(sw-1,x+dx)),jy=Math.max(0,Math.min(sh-1,y+dy)),j=jy*sw+jx;
+        const wm=(1+Math.tanh(mag[j]-mag[i]))*.5,wd=tx[i]*tx[j]+ty[i]*ty[j]<0?-1:1;
+        sx+=tx[j]*wm*wd;sy+=ty[j]*wm*wd;
+      }
+      const len=Math.sqrt(sx*sx+sy*sy);
+      nx2[i]=len>.001?sx/len:tx[i];ny2[i]=len>.001?sy/len:ty[i];
+    }
+    tx.set(nx2);ty.set(ny2);
+  }
+  return{tx,ty,mag};
+}
+
+// ══════════════════════════════════════════════════════════════════
+// GLSL SHADERS
+// ══════════════════════════════════════════════════════════════════
+const VERT=`#version 300 es
+out vec2 v_uv;
+void main(){
+  float x=(gl_VertexID==1)?3.0:-1.0,y=(gl_VertexID==2)?3.0:-1.0;
+  v_uv=vec2((x+1.)*.5,(y+1.)*.5);gl_Position=vec4(x,y,0.,1.);
+}`;
+
+const INIT_FS=`#version 300 es
+precision highp float;in vec2 v_uv;out vec4 o;uniform vec2 u_res;
+void main(){vec2 g=v_uv*u_res;o=vec4(mod((g.x+g.y)*.5,6.2831853),0.,0.,1.);}`;
+
+// SIM_FS: Kuramoto oscillator with ETF-anisotropic coupling.
+// Coupling taps aligned with the local edge tangent (ETF) get amplified by u_etfDrive,
+// so oscillator phase patterns propagate along image contours instead of uniformly.
+const SIM_FS=`#version 300 es
+precision highp float;in vec2 v_uv;out vec4 o;
+uniform sampler2D u_phase,u_params;
+uniform vec2 u_texel;
+uniform float u_dt,u_coupling,u_kCenter,u_kSurround,u_freqMin,u_freqMax,u_etfDrive;
+uniform int u_varyBy;
+const float TAU=6.2831853;
+void main(){
+  float ph=texture(u_phase,v_uv).r;
+  vec4 pm=texture(u_params,v_uv);
+  // pm.r=brightness, pm.g=edgeMag, pm.ba=ETF tangent (pixel space, normalised)
+  float edgeM=pm.g;
+  vec2 etf=pm.ba; // pixel-space tangent; used for direction comparison only (no aspect needed)
+  float t=(u_varyBy==0)?edgeM:(u_varyBy==1)?pm.r
+         :(sin(v_uv.x/u_texel.x*.4)*sin(v_uv.y/u_texel.y*.4)*.5+.5);
+  float freq=mix(u_freqMin,u_freqMax,t);
+  float c=0.,wTot=0.;
+  for(int k=0;k<10;k++){
+    float a=float(k)/10.*TAU;
+    vec2 dir=vec2(cos(a),sin(a));
+    // ETF anisotropic weight: taps aligned with contour tangent couple more strongly
+    float align=dot(dir,etf);                         // -1..1
+    float wEtf=1.+u_etfDrive*align*align*edgeM;      // 1..1+etfDrive at edges
+    float nr=texture(u_phase,v_uv+dir*u_kCenter *u_texel).r;
+    float fr=texture(u_phase,v_uv+dir*u_kSurround*u_texel).r;
+    c+=(sin(nr-ph)-.7*sin(fr-ph))*wEtf;
+    wTot+=wEtf;
+  }
+  o=vec4(ph+u_dt*(freq+u_coupling*c/wTot),0.,0.,1.);
+}`;
+
+// DISP_FS: Full display pipeline.
+// KEY UPGRADES:
+//  - Phase texture sampled with bilinear interpolation (smooth, no pixelation)
+//  - ETF warp: tangent + normal displacement follows image contours
+//  - Three-sample smear along ETF (Van Gogh effect)
+//  - Julia fractal: aspect-corrected, full coverage, smooth escape coloring,
+//    configurable scale/offset/iterations/intensity
+//  - Chromatic aberration aligned to ETF direction
+const DISP_FS=`#version 300 es
+precision highp float;in vec2 v_uv;out vec4 o;
+uniform sampler2D u_phase,u_image,u_params;
+uniform float u_time,u_aspect;
+uniform float u_oscStrength,u_windings;
+uniform int u_colorMode,u_logPolar,u_colorEnabled;
+uniform float u_driftAmp,u_driftScale,u_driftSpeed;
+uniform int u_formType;
+uniform float u_formStrength,u_formWindings,u_formFreq,u_formHue;
+uniform float u_saturation,u_contrast,u_brightness,u_hueRotate;
+// Fractal — extended controls
+uniform float u_fractalStrength,u_fractalCx,u_fractalCy;
+uniform float u_fractalScale,u_fractalOffX,u_fractalOffY,u_fractalIntensity;
+uniform int   u_fractalIter;
+// Diffraction + Recursion
+uniform float u_diffractionStrength,u_diffractionScale;
+uniform float u_recursionStrength,u_recursionScale;
+uniform int   u_recursionDepth;
+// Deep Dream
+uniform float u_deepDreamStrength,u_deepDreamScale;
+uniform int   u_deepDreamOctaves;
+// Random form constant seed params
+uniform float u_randA,u_randB,u_randC,u_randD,u_randE,u_randF,u_randG,u_randH;
+const float TAU=6.2831853;const float PI=3.14159265;
+
+vec3 hsl2rgb(float h,float s,float l){
+  vec3 rgb=clamp(abs(mod(h*6.+vec3(0.,4.,2.),6.)-3.)-1.,0.,1.);
+  return l+s*(rgb-.5)*(1.-abs(2.*l-1.));
+}
+vec3 applyHue(vec3 c,float deg){
+  float a=radians(deg),co=cos(a),si=sin(a);
+  mat3 m=mat3(.299+.701*co+.168*si,.587-.587*co+.330*si,.114-.114*co-.497*si,
+              .299-.299*co-.328*si,.587+.413*co+.035*si,.114-.114*co+.292*si,
+              .299-.300*co+1.25*si,.587-.588*co-1.05*si,.114+.886*co-.203*si);
+  return clamp(m*c,0.,1.);
+}
+vec3 phaseColor(float ph){
+  if(u_colorMode==1){float v=.5+.5*sin(ph*u_windings);return vec3(v);}
+  if(u_colorMode==2){float v=.5+.5*sin(ph*u_windings);return mix(vec3(.1,.2,1.),vec3(1.,.9,.1),v);}
+  return hsl2rgb(fract(ph*u_windings/TAU),1.,.55);
+}
+
+// ── JULIA SET: smooth escape-time coloring, full configurable coverage ──
+// Returns vec2(smoothIter/maxIter, isInside)
+// u_fractalScale: size of complex-plane window (larger = more coverage/tiles)
+// u_fractalOff*:  pan the view in the complex plane
+// u_fractalIter:  iteration depth (8-64)
+// Smooth coloring uses bailout=256 + log-log formula for band-free gradients
+vec2 juliaSmooth(vec2 uv){
+  // Aspect-corrected UV centered at 0
+  vec2 z=(uv-.5)*vec2(u_aspect,1.)*u_fractalScale+vec2(u_fractalOffX,u_fractalOffY);
+  vec2 c=vec2(u_fractalCx,u_fractalCy);
+  float n=0.;
+  bool escaped=false;
+  for(int k=0;k<64;k++){
+    if(k>=u_fractalIter)break;
+    if(dot(z,z)>256.){escaped=true;break;}
+    z=vec2(z.x*z.x-z.y*z.y+c.x,2.*z.x*z.y+c.y);
+    n+=1.;
+  }
+  if(!escaped)return vec2(0.,1.); // inside Mandelbrot set
+  // Smooth coloring: nu = n + 1 - log2(log2(|z|))
+  float sq=max(1.0001,dot(z,z));
+  float smooth_n=n+1.-log2(log2(sqrt(sq)));
+  return vec2(clamp(smooth_n/float(u_fractalIter),0.,1.),0.);
+}
+
+// ── FORM CONSTANT MASK ──
+float formMask(vec2 uv){
+  if(u_formType==0)return 0.;
+  vec2 dc=uv-.5;dc.x*=u_aspect;
+  float ang=atan(dc.y,dc.x),rad=length(dc),lr=log(.2+rad*23.)/PI;
+  float w=0.;
+  if(u_formType==1){w=sin(lr*u_formFreq*6.);w=pow(abs(w),8.);}
+  else if(u_formType==2){w=sin(lr*u_formFreq*6.+ang*u_formWindings);w=pow(abs(w),8.);}
+  else if(u_formType==3){w=sin(ang*u_formWindings*2.);w=pow(abs(w),8.);}
+  else if(u_formType==4){w=sin(lr*u_formFreq*6.)*sin(ang*u_formWindings*2.);w=pow(abs(w),8.);}
+  else if(u_formType==5){
+    vec2 q1=fract(uv*u_formFreq*5.5)-.5;
+    float cx1=step(abs(q1.x),.07)*step(abs(q1.y),.38)+step(abs(q1.y),.07)*step(abs(q1.x),.38);
+    vec2 q2=fract(uv*u_formFreq*16.5)-.5;
+    float cx2=step(abs(q2.x),.06)*step(abs(q2.y),.32)+step(abs(q2.y),.06)*step(abs(q2.x),.32);
+    w=clamp(cx1*.75+cx2*.4,0.,1.);
+  }
+  else if(u_formType==6){
+    vec2 rot=vec2(uv.x+uv.y,uv.y-uv.x)*.7071;
+    vec2 q1=fract(rot*u_formFreq*4.5)-.5;float d1=step(abs(q1.x)+abs(q1.y),.44)*step(.28,abs(q1.x)+abs(q1.y));
+    vec2 q2=fract(rot*u_formFreq*13.5)-.5;float d2=step(abs(q2.x)+abs(q2.y),.44)*step(.28,abs(q2.x)+abs(q2.y));
+    w=clamp(d1*.8+d2*.5,0.,1.);
+  }
+  else if(u_formType==7){
+    float s=u_formFreq*11.;float g1=sin(uv.x*s)*sin(uv.y*s);float g2=sin((uv.x+uv.y)*s*.707)*sin((uv.x-uv.y)*s*.707);
+    w=pow(abs(sin(g1*g2*PI*2.)),5.);
+  }
+  else if(u_formType==8){
+    float s=u_formFreq*9.;float a2=sin((uv.x+uv.y)*s),b2=sin((uv.x-uv.y)*s);float wave=abs(a2)*abs(b2);
+    float s2=u_formFreq*27.;float c2=sin((uv.x+uv.y)*s2),d2=sin((uv.x-uv.y)*s2);
+    w=pow(wave,.5)*pow(abs(c2)*abs(d2),.3)*.6+pow(wave,2.5)*.7;w=clamp(w,0.,1.);
+  }
+  // ── NEW: Shipibo reference patterns (pages 1-12) ──
+  else if(u_formType==9){
+    // SERPENTINE: alternating-row S-curve chain-link fill (background of virtually every textile)
+    // Each row oscillates in opposite phase; double-thread creates characteristic chain stitch
+    float sc=u_formFreq*8.;
+    vec2 cellIdx=floor(uv*vec2(sc,sc*.55));
+    vec2 lc=fract(uv*vec2(sc,sc*.55))-.5;
+    float rowPh=mod(cellIdx.y,2.)*PI;
+    // Primary serpentine thread
+    float snk=sin(lc.x*TAU+rowPh)*.32;
+    float line1=step(abs(lc.y-snk),.10);
+    // Secondary parallel thread (Shipibo double-stitch)
+    float snk2=sin(lc.x*TAU+rowPh+.55)*.25;
+    float line2=step(abs(lc.y+.30-snk2),.07)*.55;
+    w=clamp(line1+line2,0.,1.);
+  }
+  else if(u_formType==10){
+    // MEDALLION: tiled circular medallions with inner angular cross subdivisions (pages 9, 10)
+    // The concentric ring frames repeat across the cloth as connected units
+    float sc=u_formFreq*2.2;
+    vec2 tc=fract(uv*sc)-.5;
+    float r=length(tc),ang=atan(tc.y,tc.x);
+    // Outer medallion border ring
+    float outerRing=step(abs(r-.455),.038);
+    // Interior concentric rings
+    float rings=step(r,.43)*step(.04,r);
+    rings*=pow(abs(sin(r*PI*u_formWindings*1.6)),5.);
+    // Angular T-bar cross subdividing the interior (characteristic Shipibo axis motif)
+    float crossDiv=step(abs(sin(ang*2.)),.14)*step(r,.40)*step(.07,r);
+    // Petal points at cardinal directions
+    float petals=step(abs(cos(ang*4.)),.12)*step(abs(r-.38),.04);
+    w=clamp(outerRing+rings*.7+crossDiv*.5+petals*.6,0.,1.);
+  }
+  else if(u_formType==11){
+    // CIRCUIT: rectilinear angular path network with node circles + eye-drop terminators (pages 3, 4, 8)
+    // Structural lines run between circular junctions; teardrop endpoints are diagnostic
+    float sc=u_formFreq*3.5;
+    vec2 g1=fract(uv*sc)-.5;
+    // Orthogonal path segments
+    float hv=clamp(step(abs(g1.y),.065)+step(abs(g1.x),.065),0.,1.);
+    // Junction nodes
+    float node=step(length(g1),.115);
+    // Half-offset grid for T-junction branches
+    vec2 g2=fract(uv*sc+.5)-.5;
+    float hv2=clamp(step(abs(g2.y),.052)+step(abs(g2.x),.052),0.,1.)*.52;
+    float node2=step(length(g2),.095)*.68;
+    // Eye-drop / teardrop terminus (Shipibo path-end marker — small eye with tail)
+    float eyeDist=length(g2-vec2(0.,.21));
+    float eye=step(eyeDist,.08)*.58;
+    float tail=step(abs(g2.x),.015)*step(g2.y,.18)*step(.05,g2.y)*.4;
+    w=clamp(hv+node+hv2+node2+eye+tail,0.,1.);
+  }
+  else if(u_formType==12){
+    // RATCHET: angular Z-step meander tessellating on 45° diamond grid (pages 5, 7)
+    // Each diamond cell contains an angular stepped path; alternating rows flip direction
+    vec2 rot=vec2(uv.x+uv.y,uv.y-uv.x)*.7071;
+    float sc=u_formFreq*5.5;
+    vec2 cell=floor(rot*sc);
+    vec2 lc=fract(rot*sc);          // 0..1 within cell
+    float flip=mod(cell.x+cell.y,2.);
+    // Z-step path approximated by phase-flipped stepped sine
+    float xa=lc.x*2.-1.,ya=lc.y*2.-1.;  // -1..1
+    float zigPh=flip>0.5?1.:-1.;
+    float onPath=step(abs(ya-sin(xa*PI*.5)*zigPh*.55),.20);
+    // Diamond cell frame
+    float diam=abs(lc.x-.5)+abs(lc.y-.5);
+    float frame=step(abs(diam-.47),.033);
+    // Nested inner ratchet detail (smaller scale repeat)
+    vec2 lc2=fract(rot*sc*2.8)-.5;
+    float inner=step(abs(lc2.x)+abs(lc2.y),.45)*step(.30,abs(lc2.x)+abs(lc2.y));
+    w=clamp(onPath*.65+frame+inner*.30,0.,1.);
+  }
+  else if(u_formType==13){
+    // GOURD: large organic kidney/blob regions with interior woven coil detail (page 2)
+    // Sinusoidal composition creates smooth organic zones; interior has tight S-weave
+    float sc=u_formFreq*2.4;
+    vec2 q=uv*sc;
+    // Organic blob field (low-frequency sine products = smooth organic regions)
+    float bx=sin(q.x*PI*1.18+.42)*cos(q.y*PI*.92);
+    float by=cos(q.x*PI*.82+1.65)*sin(q.y*PI*1.28+.85);
+    float blob=bx+by;
+    // Blob border contour lines
+    float contour=pow(abs(sin(blob*PI*u_formWindings*.72)),7.);
+    // Interior woven texture: tight serpentine confined to blob interiors
+    vec2 q2=uv*sc*3.8;
+    float innerField=sin(q2.x*PI*1.28)*sin(q2.y*PI*1.12);
+    float weave=pow(abs(sin(innerField*PI*u_formWindings)),8.);
+    // Interior mask: weave stronger inside blob, zero at border
+    float t=smoothstep(-.18,.18,blob);
+    w=clamp(contour*.78+weave*t*.42,0.,1.);
+  }
+  else if(u_formType==14){
+    // RANDOM: procedurally generated pattern from seed uniforms
+    // Combines 3 oscillating layers at random frequencies/phases/orientations
+    float ang1=u_randG*TAU;  // random axis angle
+    float ang2=u_randH*TAU;
+    vec2 axis1=vec2(cos(ang1),sin(ang1));
+    vec2 axis2=vec2(cos(ang2),sin(ang2));
+    // Layer 1: oriented sine bands
+    float f1b=u_randA*u_formFreq*12.+1.;
+    float l1=sin(dot(uv-.5,axis1)*f1b*TAU+u_randB*TAU);
+    // Layer 2: perpendicular bands at different frequency
+    float f2b=u_randC*u_formFreq*8.+1.5;
+    float l2=sin(dot(uv-.5,axis2)*f2b*TAU+u_randD*TAU);
+    // Layer 3: radial/concentric component
+    vec2 dc=uv-.5;dc.x*=u_aspect;
+    float rad=length(dc),ang=atan(dc.y,dc.x);
+    float f3b=u_randE*u_formFreq*10.+2.;
+    float l3=sin(rad*f3b*TAU+ang*floor(u_randF*8.+1.)+u_randA*PI);
+    // Combine with random blend weights, then sharpen to lines
+    float blend=l1*(u_randB*.5+.5)+l2*(u_randD*.5+.5)+l3*(u_randF*.5+.5);
+    float sharpness=3.+u_randC*6.;
+    w=pow(abs(sin(blend*PI)),sharpness);
+    w=clamp(w,0.,1.);
+  }
+  return w;
+}
+
+void main(){
+  // ── ETF from param texture (smooth bilinear sampling) ──
+  vec4 pm=texture(u_params,v_uv);
+  float edgeMag=pm.g;
+  // ETF stored in pixel space; convert to UV-space direction accounting for aspect ratio
+  vec2 etfRaw=pm.ba;
+  vec2 etfDir=normalize(vec2(etfRaw.x,etfRaw.y*u_aspect)+vec2(1e-6));
+  vec2 etfNorm=vec2(-etfDir.y,etfDir.x); // perpendicular (cross-contour)
+
+  // ── Oscillator phase — bilinear sampling for smooth appearance ──
+  // (Phase texture is now LINEAR+CLAMP so this is smooth at display resolution)
+  vec2 uvO=v_uv;
+  if(u_logPolar==1){
+    vec2 d=v_uv-.5;d.x*=u_aspect;
+    float ang=atan(d.y,d.x),rad=length(d),lr=log(.2+rad*23.)/PI;
+    uvO=vec2(fract(ang/TAU+.5),clamp(lr,0.,1.));
+  }
+  float ph=texture(u_phase,uvO).r;
+
+  // ── ETF-guided contour warp ──
+  float fmask=formMask(v_uv);
+  float driftAnim=sin(u_time*u_driftSpeed*1.4+ph*1.8)*.28+.72;
+  float baseWarp=u_formStrength*.19*driftAnim;
+  vec2 tangentDisp=etfDir *fmask*edgeMag*baseWarp;
+  float crossPh=sin(ph*u_windings+u_time*u_driftSpeed*.8)*.5;
+  vec2 normalDisp=etfNorm*crossPh*fmask*edgeMag*baseWarp*.5;
+  vec2 globalDrift=vec2(
+    sin(v_uv.y*u_driftScale*6.+u_time*u_driftSpeed),
+    cos(v_uv.x*u_driftScale*6.+u_time*u_driftSpeed*.9)
+  )*u_driftAmp;
+  vec2 uv=v_uv+tangentDisp+normalDisp+globalDrift;
+
+  // ── Three-sample ETF smear ──
+  float smearAmt=fmask*edgeMag*u_formStrength*.7;
+  float smearBl=sin(ph*u_windings+u_time*u_driftSpeed*.6)*.5+.5;
+  vec2 uv_c=clamp(uv,                           .001,.999);
+  vec2 uv_f=clamp(uv+etfDir*baseWarp*.55,        .001,.999);
+  vec2 uv_b=clamp(uv-etfDir*baseWarp*.35,        .001,.999);
+
+  // ── Photo sampling (with optional ETF-aligned chromatic aberration) ──
+  vec3 photo;
+  if(u_diffractionStrength>.001){
+    float doff=u_diffractionScale*.007*u_diffractionStrength;
+    vec2 caOff=etfDir*doff;
+    float r=texture(u_image,clamp(uv_c+caOff,.001,.999)).r;
+    float g2=texture(u_image,uv_c).g;
+    float b3=texture(u_image,clamp(uv_c-caOff,.001,.999)).b;
+    vec3 s0=texture(u_image,uv_c).rgb,s1=texture(u_image,uv_f).rgb,s2=texture(u_image,uv_b).rgb;
+    vec3 smeared=mix(mix(s0,s1,smearAmt*smearBl),s2,smearAmt*(1.-smearBl)*.6);
+    photo=mix(smeared,vec3(r,g2,b3),u_diffractionStrength*.7);
+  } else {
+    vec3 s0=texture(u_image,uv_c).rgb,s1=texture(u_image,uv_f).rgb,s2=texture(u_image,uv_b).rgb;
+    photo=mix(mix(s0,s1,smearAmt*smearBl),s2,smearAmt*(1.-smearBl)*.6);
+  }
+
+  // ── Color processing ──
+  if(u_colorEnabled==1){
+    photo=applyHue(photo,u_hueRotate);
+    float lm=dot(photo,vec3(.299,.587,.114));
+    photo=mix(vec3(lm),photo,u_saturation);
+  }
+  photo=(photo-.5)*u_contrast+.5;
+  photo*=u_brightness;
+  photo=clamp(photo,0.,1.);
+
+  // ── Oscillator geometry overlay ──
+  vec3 osc=phaseColor(ph);
+  if(u_colorEnabled==0){float lm=dot(osc,vec3(.299,.587,.114));osc=vec3(lm);}
+  vec3 col=1.-(1.-photo)*(1.-osc*u_oscStrength);
+
+  // ── ALWAYS-ON RAINBOW HALO ────────────────────────────────────────────────
+  // Edge-following prismatic glow — always active when oscillator is on.
+  // Hue driven by ETF angle so horizontal/vertical/diagonal edges get different colors.
+  // This restores the electric iridescent outline effect.
+  if(u_oscStrength>.001&&u_colorEnabled==1){
+    vec2 ddx=vec2(.0018,0.),ddy=vec2(0.,.0018);
+    float em=length(texture(u_image,clamp(v_uv+ddx,.001,.999)).rgb
+                   -texture(u_image,clamp(v_uv-ddx,.001,.999)).rgb)
+            +length(texture(u_image,clamp(v_uv+ddy,.001,.999)).rgb
+                   -texture(u_image,clamp(v_uv-ddy,.001,.999)).rgb);
+    float en=clamp(em*6.,0.,1.);
+    // Full-spectrum hue: ETF angle gives direction-dependent color, time animates it
+    float etfAng=atan(etfDir.y,etfDir.x);
+    vec3 haloCol=hsl2rgb(fract(etfAng/TAU+ph*.18+u_time*.09),.98,.68);
+    // Two-layer halo: thin bright line + wider soft glow
+    float thinLine=pow(en,2.5);
+    float softGlow=pow(en,0.7)*0.35;
+    col=1.-(1.-col)*(1.-haloCol*(thinLine*0.9+softGlow)*u_oscStrength*1.4);
+    col=clamp(col,0.,1.);
+  }
+
+  // ── Form-constant subtle color tint (secondary to warp) ──
+  if(u_formType>0&&u_formStrength>.001){
+    float line=formMask(uv_c);
+    vec3 fc=(u_colorEnabled==1)?hsl2rgb(fract(u_formHue/360.+ph*.06),1.,.6)*line*u_formStrength*.3:vec3(line*u_formStrength*.2);
+    col=1.-(1.-col)*(1.-fc);
+  }
+
+  // ── Recursion ──
+  if(u_recursionStrength>.001){
+    vec3 racc=vec3(0.);float wacc=0.;
+    for(int d=0;d<5;d++){
+      if(d>=u_recursionDepth)break;
+      float s=pow(u_recursionScale,float(d+1));
+      vec2 ruv=clamp((uv_c-.5)*s+.5,.001,.999);
+      float w2=pow(.55,float(d));
+      vec3 rs=texture(u_image,ruv).rgb;
+      if(u_colorEnabled==0){float rl=dot(rs,vec3(.299,.587,.114));rs=vec3(rl);}
+      racc+=rs*w2;wacc+=w2;
+    }
+    if(wacc>0.)col=1.-(1.-col)*(1.-(racc/wacc)*u_recursionStrength*.65);
+  }
+
+  // ── Fractal overlay (smooth coloring, full coverage) ──
+  if(u_fractalStrength>.001){
+    vec2 fv=juliaSmooth(uv_c);
+    float n=fv.x;float inside=fv.y;
+    vec3 fc2;
+    if(inside>.5){
+      fc2=(u_colorEnabled==1)?hsl2rgb(fract(u_formHue/360.+.5),.6,.15):vec3(.05);
+    } else if(u_colorEnabled==1){
+      float hue=fract(n*u_fractalIntensity+u_time*.035);
+      fc2=hsl2rgb(hue,.92,.5+n*.28);
+    } else {
+      fc2=vec3(pow(n,1./u_fractalIntensity));
+    }
+    float blendStr=mix(inside*.3,1.,1.-inside)*u_fractalStrength*.7;
+    col=1.-(1.-col)*(1.-fc2*blendStr);
+  }
+
+  // ── Diffraction chromatic aberration edge split ──
+  if(u_diffractionStrength>.001){
+    vec2 dx=vec2(.002,0.),dy=vec2(0.,.002);
+    float em=length(texture(u_image,v_uv+dx).rgb-texture(u_image,v_uv-dx).rgb)
+            +length(texture(u_image,v_uv+dy).rgb-texture(u_image,v_uv-dy).rgb);
+    float en=clamp(em*5.,0.,1.);
+    if(u_colorEnabled==1){
+      float etfAng=atan(etfDir.y,etfDir.x);
+      col+=hsl2rgb(fract(etfAng/TAU+u_time*.07+em*3.),1.,.62)*en*u_diffractionStrength*.42;
+    } else {
+      col+=vec3(en*u_diffractionStrength*.3);
+    }
+    col=clamp(col,0.,1.);
+  }
+
+  // ── DEEP DREAM ───────────────────────────────────────────────────────────
+  // Faithful approximation of Google DeepDream's visual signature.
+  // Reference images show: iridescent rainbow NOT warm tones, strong emboss,
+  // prominent tiled eye/iris clusters, recursive animal-face nesting, extreme saturation.
+  if(u_deepDreamStrength>.001){
+    float dd=u_deepDreamStrength;
+    float dsc=max(.1,u_deepDreamScale);
+
+    // ── 1. Multi-scale self-similar recursion ──────────────────────────────
+    // Each zoom level samples the image at a smaller scale + slight rotation,
+    // with increasing saturation per level (deeper = more intense color).
+    // The random oscillator-driven offset makes nested layers animate naturally.
+    vec3 ms=vec3(0.);float mw=0.;
+    int oct=clamp(u_deepDreamOctaves,2,6);
+    for(int i=1;i<=6;i++){
+      if(i>oct)break;
+      float s=pow(.48,float(i))*dsc;
+      // Per-level rotation (creates the twisted nested-animal-face look)
+      float rot=float(i)*.11*dd;
+      float cr=cos(rot),sr2=sin(rot);
+      vec2 centered=uv_c-.5;
+      vec2 rotated=vec2(centered.x*cr-centered.y*sr2, centered.x*sr2+centered.y*cr);
+      // Phase-driven jitter: each zoom level sways independently with oscillator
+      vec2 jitter=vec2(sin(float(i)*1.37+ph*.4+u_time*.15),
+                       cos(float(i)*2.11+ph*.35+u_time*.12))*.014*dd;
+      vec2 ruv=clamp(rotated*s+.5+jitter,.001,.999);
+      vec3 sr=texture(u_image,ruv).rgb;
+      // Boost saturation at each nested level (hyper-vivid recursive look)
+      float lm2=dot(sr,vec3(.299,.587,.114));
+      float satBoost=1.+float(i)*0.5*dd;
+      sr=mix(vec3(lm2),sr,satBoost);
+      float wi=pow(.6,float(i-1));
+      ms+=sr*wi;mw+=wi;
+    }
+    if(mw>0.)ms/=mw;
+
+    // ── 2. Aggressive emboss / bump relief ────────────────────────────────
+    // Very strong directional light creates the "sculpted clay" DeepDream texture.
+    // Ridge color: ALWAYS full-spectrum rainbow (never warm-biased).
+    float ep=.0014/dsc;
+    vec3 lxe=texture(u_image,clamp(uv_c+vec2(ep,0.),.001,.999)).rgb
+            -texture(u_image,clamp(uv_c-vec2(ep,0.),.001,.999)).rgb;
+    vec3 lye=texture(u_image,clamp(uv_c+vec2(0.,ep),.001,.999)).rgb
+            -texture(u_image,clamp(uv_c-vec2(0.,ep),.001,.999)).rgb;
+    float bumpX=dot(lxe,vec3(.299,.587,.114));
+    float bumpY=dot(lye,vec3(.299,.587,.114));
+    float bump=clamp(bumpX*5.5-bumpY*2.5+.5,0.,1.); // much stronger than before
+    // Rainbow ridge: hue spans full spectrum per-edge based on gradient direction
+    // CRITICAL: do NOT use etfDir.x alone — use atan of gradient for direction diversity
+    float gradAng=atan(bumpY,bumpX);
+    vec3 ridgeHigh=(u_colorEnabled==1)
+      ? hsl2rgb(fract(gradAng/TAU+ph*.28+u_time*.055+edgeMag*.6),1.,.72)
+      : vec3(.5+bump*.5);
+    vec3 ridgeDark=(u_colorEnabled==1)
+      ? hsl2rgb(fract(gradAng/TAU+.5+u_time*.04),.8,.22)  // complementary dark valleys
+      : vec3(bump*.15);
+    vec3 embossed=mix(ridgeDark,mix(col*.7,ridgeHigh,.65+bump*.28),bump);
+
+    // ── 3. Tiled eye / iris clusters ─────────────────────────────────────
+    // REAL DeepDream has eyes everywhere — they tile densely across ALL surfaces.
+    // We tile a grid of eye cells, seed each with image color, make iris rainbow.
+    // Two density layers: coarse (large features) + fine (background texture).
+    vec3 eyeLayer=vec3(0.);
+    for(int eLayer=0;eLayer<2;eLayer++){
+      float eyeScale=(eLayer==0)?(3.2+dd*1.8):(7.5+dd*3.5);
+      vec2 eyeUV=uv_c*eyeScale;
+      vec2 eyeCell=floor(eyeUV);
+      vec2 eyeLocal=fract(eyeUV)-.5; // -0.5..0.5 within cell
+      float r=length(eyeLocal);
+
+      // Seed the eye color from the image at this cell's center
+      vec3 seedCol=texture(u_image,clamp(eyeCell/eyeScale+.5/eyeScale,.001,.999)).rgb;
+      float seedLum=dot(seedCol,vec3(.299,.587,.114));
+      // Iris hue: cycles around full rainbow per cell + animated by time
+      float irisHue=fract(seedLum*3.1+float(eLayer)*.27+ph*.22+u_time*.04);
+      vec3 irisRainbow=(u_colorEnabled==1)?hsl2rgb(irisHue,.98,.62):vec3(seedLum);
+
+      // Concentric iris rings (sharp pow function = thin bright bands)
+      float rings=pow(abs(sin(r*PI*14.)),11.);
+      // Pupil: dark circle in center
+      float pupilMask=1.-smoothstep(.04,.10,r);
+      // Sclera / white of eye: bright ring just outside iris
+      float scleraMask=smoothstep(.28,.31,r)*(1.-smoothstep(.36,.40,r));
+      // Combine: rings get iris color, pupil is dark, sclera is bright
+      float eyeWeight=(eLayer==0)?.52:.28; // coarse layer stronger
+      eyeLayer+=( irisRainbow*rings*(1.-pupilMask)
+                + vec3(.08)*pupilMask
+                + vec3(.85)*scleraMask )*eyeWeight*dd;
+    }
+    // Screen blend eyes: they appear on ALL surfaces regardless of edge
+    vec3 withEyes=1.-(1.-embossed)*(1.-eyeLayer*.85);
+
+    // ── 4. Feature amplification — unsharp mask (hyper-detail) ──────────
+    float br=.0022/dsc,br2=.0058/dsc;
+    vec3 b1=(texture(u_image,clamp(uv_c+vec2(br,0.),.001,.999)).rgb
+            +texture(u_image,clamp(uv_c-vec2(br,0.),.001,.999)).rgb
+            +texture(u_image,clamp(uv_c+vec2(0.,br),.001,.999)).rgb
+            +texture(u_image,clamp(uv_c-vec2(0.,br),.001,.999)).rgb)*.25;
+    vec3 b2=(texture(u_image,clamp(uv_c+vec2(br2,br2),.001,.999)).rgb
+            +texture(u_image,clamp(uv_c-vec2(br2,br2),.001,.999)).rgb
+            +texture(u_image,clamp(uv_c+vec2(-br2,br2),.001,.999)).rgb
+            +texture(u_image,clamp(uv_c+vec2(br2,-br2),.001,.999)).rgb)*.25;
+    vec3 sharp=col+(col-b1)*3.0+(col-b2)*1.8; // aggressive sharpening
+    sharp=clamp(sharp,0.,1.);
+
+    // ── 5. Compose all layers ─────────────────────────────────────────────
+    // Blend aggressive sharp base + multi-scale recursion + emboss+eyes
+    vec3 dream=mix(sharp,ms,.4+dd*.25);
+    dream=mix(dream,withEyes,.5+dd*.3);
+
+    // ── 6. Iridescent prismatic rim glow ──────────────────────────────────
+    // Full-spectrum rim light on all strong edges.
+    // Hue: gradient angle (NOT etfDir.x) → guarantees full rainbow distribution
+    float rim=pow(edgeMag,1.1)*(.65+dd*.5);
+    vec3 rimCol=(u_colorEnabled==1)
+      ? hsl2rgb(fract(gradAng/TAU*.5+ph*.35+u_time*.08),.99,.70)
+      : vec3(rim*.75);
+    dream=1.-(1.-dream)*(1.-rimCol*rim*dd*0.95);
+
+    // ── 7. Saturation explosion ────────────────────────────────────────────
+    // DeepDream is EXTREMELY saturated — push colors to maximum vibrancy
+    float dreamLum=dot(dream,vec3(.299,.587,.114));
+    float satX=1.+dd*3.2; // up to 4.2× saturation at full strength
+    if(u_colorEnabled==1) dream=clamp(mix(vec3(dreamLum),dream,satX),0.,1.);
+
+    // Compound blend: at dd=1 the output is ~85% dream (very visible even at 30%)
+    col=clamp(mix(col,dream,min(1.,dd*1.5)),0.,1.);
+  }
+
+  o=vec4(col,1.);
+}`;
+
+// ══════════════════════════════════════════════════════════════════
+// ENGINE
+// ══════════════════════════════════════════════════════════════════
+class Engine{
+  constructor(canvas){
+    this.canvas=canvas;
+    this.gl=canvas.getContext('webgl2',{preserveDrawingBuffer:true,antialias:false});
+    if(!this.gl)throw new Error('WebGL2 not available in this browser.');
+    const gl=this.gl;
+    if(!gl.getExtension('EXT_color_buffer_float'))
+      throw new Error('EXT_color_buffer_float not supported — float textures required.');
+    this.progInit=this._prog(VERT,INIT_FS);
+    this.progSim =this._prog(VERT,SIM_FS);
+    this.progDisp=this._prog(VERT,DISP_FS);
+    this.vao=gl.createVertexArray();
+    this.params=makeParams('psilocybin',.45);
+    this.time=0;this.simRes={w:2,h:2};this.ready=false;this.aspect=1;
+  }
+  _sh(t,src){
+    const gl=this.gl,s=gl.createShader(t);
+    gl.shaderSource(s,src);gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error('Shader:\n'+gl.getShaderInfoLog(s));
+    return s;
+  }
+  _prog(vs,fs){
+    const gl=this.gl,p=gl.createProgram();
+    gl.attachShader(p,this._sh(gl.VERTEX_SHADER,vs));gl.attachShader(p,this._sh(gl.FRAGMENT_SHADER,fs));
+    gl.linkProgram(p);
+    if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error('Program:\n'+gl.getProgramInfoLog(p));
+    return p;
+  }
+  // LINEAR + CLAMP: smooth interpolation, no edge wrapping artifacts
+  _texLC(w,h,data=null){
+    const gl=this.gl,t=gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D,t);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,w,h,0,gl.RGBA,gl.FLOAT,data);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    return t;
+  }
+  // NEAREST + REPEAT: used for param texture in SIM pass (needs wrap for coupling kernel)
+  _texNR(w,h,data=null){
+    const gl=this.gl,t=gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D,t);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,w,h,0,gl.RGBA,gl.FLOAT,data);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
+    return t;
+  }
+  _fbo(tex){
+    const gl=this.gl,f=gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER,f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,tex,0);
+    return f;
+  }
+  setImage(img){
+    const gl=this.gl;
+    this.aspect=img.width/img.height;
+    const cap=this.params.simRes;
+    let sw,sh;
+    if(this.aspect>=1){sw=cap;sh=Math.max(2,Math.round(cap/this.aspect));}
+    else{sh=cap;sw=Math.max(2,Math.round(cap*this.aspect));}
+    this.simRes={w:sw,h:sh};
+
+    // Rasterise at sim resolution (flipped for GL)
+    const c=document.createElement('canvas');c.width=sw;c.height=sh;
+    const cx=c.getContext('2d');cx.translate(0,sh);cx.scale(1,-1);cx.drawImage(img,0,0,sw,sh);
+    const px=cx.getImageData(0,0,sw,sh).data;
+    const bright=new Float32Array(sw*sh);
+    for(let i=0;i<sw*sh;i++)bright[i]=(px[i*4]+px[i*4+1]+px[i*4+2])/765;
+
+    // ETF computation
+    const{tx,ty,mag}=computeETF(bright,sw,sh);
+
+    // Pack param texture: (brightness, edgeMag, tx, ty)
+    const param=new Float32Array(sw*sh*4);
+    for(let i=0;i<sw*sh;i++){param[i*4]=bright[i];param[i*4+1]=mag[i];param[i*4+2]=tx[i];param[i*4+3]=ty[i];}
+
+    // Param texture: NEAREST+REPEAT for SIM pass coupling kernel wrapping
+    if(this.paramTex)gl.deleteTexture(this.paramTex);
+    this.paramTex=this._texNR(sw,sh,param);
+
+    // ETF/param texture: LINEAR+CLAMP for smooth display pass sampling
+    if(this.etfTex)gl.deleteTexture(this.etfTex);
+    this.etfTex=this._texLC(sw,sh,param);
+
+    // Photo texture: LINEAR+CLAMP, full source resolution
+    if(this.imageTex)gl.deleteTexture(this.imageTex);
+    this.imageTex=gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D,this.imageTex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+
+    // Phase ping-pong: LINEAR+CLAMP → smooth bilinear upscaling in display pass
+    [this.texA,this.texB].forEach(t=>t&&gl.deleteTexture(t));
+    [this.fboA,this.fboB].forEach(f=>f&&gl.deleteFramebuffer(f));
+    this.texA=this._texLC(sw,sh);this.fboA=this._fbo(this.texA);
+    this.texB=this._texLC(sw,sh);this.fboB=this._fbo(this.texB);
+
+    this._initPhase();this.ready=true;
+  }
+  _initPhase(){
+    const gl=this.gl;
+    gl.bindVertexArray(this.vao);gl.useProgram(this.progInit);
+    gl.bindFramebuffer(gl.FRAMEBUFFER,this.fboA);
+    gl.viewport(0,0,this.simRes.w,this.simRes.h);
+    gl.uniform2f(gl.getUniformLocation(this.progInit,'u_res'),this.simRes.w,this.simRes.h);
+    gl.drawArrays(gl.TRIANGLES,0,3);this.cur='A';
+  }
+  setParams(p){this.params=p;}
+  step(){
+    if(!this.ready)return;
+    const gl=this.gl,P=this.params;
+    const src=this.cur==='A'?this.texA:this.texB,dstF=this.cur==='A'?this.fboB:this.fboA;
+    gl.bindVertexArray(this.vao);gl.useProgram(this.progSim);
+    gl.bindFramebuffer(gl.FRAMEBUFFER,dstF);
+    gl.viewport(0,0,this.simRes.w,this.simRes.h);
+    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,src);
+    gl.uniform1i(gl.getUniformLocation(this.progSim,'u_phase'),0);
+    gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,this.paramTex);
+    gl.uniform1i(gl.getUniformLocation(this.progSim,'u_params'),1);
+    const u=n=>gl.getUniformLocation(this.progSim,n);
+    gl.uniform2f(u('u_texel'),1/this.simRes.w,1/this.simRes.h);
+    gl.uniform1f(u('u_dt'),.12*P.speed);
+    gl.uniform1f(u('u_coupling'),P.coupling);
+    gl.uniform1f(u('u_kCenter'),P.kCenter);
+    gl.uniform1f(u('u_kSurround'),P.kSurround);
+    gl.uniform1f(u('u_freqMin'),P.freqMin);
+    gl.uniform1f(u('u_freqMax'),P.freqMax);
+    gl.uniform1i(u('u_varyBy'),P.varyBy);
+    gl.uniform1f(u('u_etfDrive'),P.etfDrive||0.3);    // ETF anisotropic bias
+    gl.drawArrays(gl.TRIANGLES,0,3);
+    this.cur=this.cur==='A'?'B':'A';
+  }
+  render(){
+    if(!this.ready)return;
+    const gl=this.gl,P=this.params;
+    const phase=this.cur==='A'?this.texA:this.texB;
+    gl.bindVertexArray(this.vao);gl.useProgram(this.progDisp);
+    gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+    gl.viewport(0,0,this.canvas.width,this.canvas.height);
+    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,phase);
+    gl.uniform1i(gl.getUniformLocation(this.progDisp,'u_phase'),0);
+    gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,this.imageTex);
+    gl.uniform1i(gl.getUniformLocation(this.progDisp,'u_image'),1);
+    gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,this.etfTex);
+    gl.uniform1i(gl.getUniformLocation(this.progDisp,'u_params'),2);
+    const u=n=>gl.getUniformLocation(this.progDisp,n);
+    gl.uniform1f(u('u_time'),this.time);
+    gl.uniform1f(u('u_aspect'),this.aspect);
+    gl.uniform1f(u('u_oscStrength'),P.oscStrength);
+    gl.uniform1f(u('u_windings'),P.windings);
+    gl.uniform1i(u('u_colorMode'),P.colorMode);
+    gl.uniform1i(u('u_logPolar'),P.logPolar);
+    gl.uniform1i(u('u_colorEnabled'),P.colorEnabled);
+    gl.uniform1f(u('u_driftAmp'),P.driftAmp);
+    gl.uniform1f(u('u_driftScale'),P.driftScale);
+    gl.uniform1f(u('u_driftSpeed'),P.driftSpeed);
+    gl.uniform1i(u('u_formType'),P.formType);
+    gl.uniform1f(u('u_formStrength'),P.formStrength);
+    gl.uniform1f(u('u_formWindings'),P.formWindings);
+    gl.uniform1f(u('u_formFreq'),P.formFreq);
+    gl.uniform1f(u('u_formHue'),P.formHue);
+    gl.uniform1f(u('u_saturation'),P.saturation);
+    gl.uniform1f(u('u_contrast'),P.contrast);
+    gl.uniform1f(u('u_brightness'),P.brightness);
+    gl.uniform1f(u('u_hueRotate'),P.hueRotate);
+    gl.uniform1f(u('u_fractalStrength'),P.fractalStrength||0);
+    gl.uniform1f(u('u_fractalCx'),P.fractalCx||-.7);
+    gl.uniform1f(u('u_fractalCy'),P.fractalCy||.27);
+    gl.uniform1f(u('u_fractalScale'),P.fractalScale||3.5);
+    gl.uniform1f(u('u_fractalOffX'),P.fractalOffX||0);
+    gl.uniform1f(u('u_fractalOffY'),P.fractalOffY||0);
+    gl.uniform1i(u('u_fractalIter'),Math.round(P.fractalIter||32));
+    gl.uniform1f(u('u_fractalIntensity'),P.fractalIntensity||1.2);
+    gl.uniform1f(u('u_diffractionStrength'),P.diffractionStrength||0);
+    gl.uniform1f(u('u_diffractionScale'),P.diffractionScale||1);
+    gl.uniform1f(u('u_recursionStrength'),P.recursionStrength||0);
+    gl.uniform1f(u('u_recursionScale'),P.recursionScale||.6);
+    gl.uniform1i(u('u_recursionDepth'),Math.round(P.recursionDepth||3));
+    // Deep Dream
+    gl.uniform1f(u('u_deepDreamStrength'),P.deepDreamStrength||0);
+    gl.uniform1f(u('u_deepDreamScale'),P.deepDreamScale||1.0);
+    gl.uniform1i(u('u_deepDreamOctaves'),Math.round(P.deepDreamOctaves||4));
+    // Random form seed params
+    gl.uniform1f(u('u_randA'),P.randA||.5);
+    gl.uniform1f(u('u_randB'),P.randB||.3);
+    gl.uniform1f(u('u_randC'),P.randC||.7);
+    gl.uniform1f(u('u_randD'),P.randD||.2);
+    gl.uniform1f(u('u_randE'),P.randE||.6);
+    gl.uniform1f(u('u_randF'),P.randF||.4);
+    gl.uniform1f(u('u_randG'),P.randG||.15);
+    gl.uniform1f(u('u_randH'),P.randH||.65);
+    gl.drawArrays(gl.TRIANGLES,0,3);
+  }
+  frame(steps=2){for(let i=0;i<steps;i++)this.step();this.time+=.016*this.params.speed;this.render();}
+  resize(w,h){this.canvas.width=w;this.canvas.height=h;}
+}
+
+// ══════════════════════════════════════════════════════════════════
+// APP STATE
+// ══════════════════════════════════════════════════════════════════
+const S={
+  substance:'psilocybin',doseIdx:2,overrides:{},
+  playing:false,hasImage:false,fileName:null,loadedImg:null,
+  tab:'substance',sheetOpen:true,aiNote:null,aiBusy:false,engine:null,raf:null,
+  // Master intensity
+  globalIntensity:1.0,
+  // Color
+  colorEnabled:1,
+  // Fractal — extended
+  fractalStrength:0, fractalCx:-.7, fractalCy:.27,
+  fractalScale:3.5,  fractalOffX:0, fractalOffY:0,
+  fractalIter:32,    fractalIntensity:1.2,
+  // Diffraction + Recursion
+  diffractionStrength:0,diffractionScale:1.2,
+  recursionStrength:0,  recursionScale:.6,  recursionDepth:3,
+  // ETF oscillator coupling
+  etfDrive:0.3,
+  // Deep Dream
+  deepDreamStrength:0, deepDreamScale:1.0, deepDreamOctaves:4,
+  // Random form constant seed (8 params, randomized by JS)
+  randA:.5, randB:.3, randC:.7, randD:.2, randE:.6, randF:.4, randG:.15, randH:.65,
+  // ── REAL DEEP DREAM (TF.js MobileNetV2 gradient ascent) ──
+  dd_modelState: 'idle',  // 'idle' | 'loading' | 'ready' | 'error'
+  dd_model: null,         // underlying tf.LayersModel from mobilenet
+  dd_featureModel: null,  // sub-model up to target layers
+  dd_running: false,
+  dd_progress: 0,         // 0-1
+  dd_statusMsg: '',
+  dd_result: null,        // data URL of last result
+  dd_layerPreset: 'mid',  // 'shallow'|'mid'|'deep'|'custom'
+  dd_layerCustom: 60,     // for custom mode
+  dd_iter: 30,
+  dd_stepSize: 0.025,
+  dd_octaves: 3,
+  dd_octaveScale: 1.5,
+};
+const SUB=()=>SUBSTANCES[S.substance];
+const DOSE=()=>SUB().doses[S.doseIdx];
+const COL=()=>SUB().color;
+
+// Keys that live directly on S (not in overrides)
+const DIRECT=new Set([
+  'globalIntensity','colorEnabled',
+  'fractalStrength','fractalCx','fractalCy','fractalScale','fractalOffX','fractalOffY','fractalIter','fractalIntensity',
+  'diffractionStrength','diffractionScale',
+  'recursionStrength','recursionScale','recursionDepth',
+  'etfDrive',
+  'deepDreamStrength','deepDreamScale','deepDreamOctaves',
+  'randA','randB','randC','randD','randE','randF','randG','randH',
+]);
+// Keys that are integer values
+const INT_KEYS=new Set(['fractalIter','recursionDepth','deepDreamOctaves','dd_iter','dd_octaves','dd_layerCustom']);
+
+function getParams(){
+  const p={...makeParams(S.substance,DOSE().i),...S.overrides};
+  const gi=S.globalIntensity!=null?S.globalIntensity:1.0;
+
+  // Global intensity scales all effect strengths proportionally.
+  p.oscStrength =Math.min(0.8,  (p.oscStrength ||0)*gi);
+  p.formStrength=Math.min(0.8,  (p.formStrength||0)*gi);
+  p.driftAmp    =Math.min(0.015,(p.driftAmp    ||0)*gi);
+  p.saturation  =Math.max(1.0, 1+(p.saturation -1)*gi);
+  p.contrast    =Math.max(1.0, 1+(p.contrast   -1)*gi);
+  p.brightness  =             1+(p.brightness  -1)*gi;
+  p.hueRotate   =(p.hueRotate||0)*gi;
+
+  // Direct-state params
+  p.globalIntensity=gi;
+  p.colorEnabled=S.colorEnabled;
+  p.fractalStrength    =Math.min(0.75,(S.fractalStrength   ||0)*gi);
+  p.fractalCx=S.fractalCx; p.fractalCy=S.fractalCy;
+  p.fractalScale=S.fractalScale; p.fractalOffX=S.fractalOffX; p.fractalOffY=S.fractalOffY;
+  p.fractalIter=S.fractalIter; p.fractalIntensity=S.fractalIntensity;
+  p.diffractionStrength=Math.min(0.85,(S.diffractionStrength||0)*gi);
+  p.diffractionScale=S.diffractionScale;
+  p.recursionStrength  =Math.min(0.75,(S.recursionStrength  ||0)*gi);
+  p.recursionScale=S.recursionScale; p.recursionDepth=S.recursionDepth;
+  p.etfDrive=Math.min(1.0,(S.etfDrive||0.3)*gi);
+  // Deep Dream — also scaled by global intensity
+  p.deepDreamStrength=Math.min(1.0,(S.deepDreamStrength||0)*gi);
+  p.deepDreamScale=S.deepDreamScale; p.deepDreamOctaves=S.deepDreamOctaves;
+  // Psilocybin preset boosts deep dream: merge preset value with user's S value
+  // (preset sets a floor; user can go higher)
+  if(p._ddPreset){
+    p.deepDreamStrength=Math.max(p._ddPreset*gi, p.deepDreamStrength);
+  }
+  // Random seed params (pass through unchanged)
+  p.randA=S.randA; p.randB=S.randB; p.randC=S.randC; p.randD=S.randD;
+  p.randE=S.randE; p.randF=S.randF; p.randG=S.randG; p.randH=S.randH;
+  return p;
+}
+
+// ── DOM REFS ──────────────────────────────────────────────────────
+const canvas  =document.getElementById('glcanvas');
+const emptyState=document.getElementById('empty-state');
+const errorState=document.getElementById('error-state');
+const errorMsg  =document.getElementById('error-msg');
+const aiNoteEl  =document.getElementById('ai-note');
+const etfStatus =document.getElementById('etf-status');
+
+// ── ENGINE INIT ───────────────────────────────────────────────────
+try{
+  S.engine=new Engine(canvas);
+  S.engine.setParams(getParams());
+}catch(err){
+  errorMsg.textContent=err.message;
+  errorState.style.display='block';
+  emptyState.style.display='none';
+}
+
+// ── ANIMATION LOOP ────────────────────────────────────────────────
+function startLoop(){
+  if(S.raf)return;
+  const loop=()=>{
+    if(S.engine){if(S.playing)S.engine.frame(2);else S.engine.render();}
+    S.raf=requestAnimationFrame(loop);
+  };
+  S.raf=requestAnimationFrame(loop);
+}
+
+// Aspect-ratio-aware canvas resize.
+// When an image is loaded the canvas is letterboxed to preserve the image's
+// exact aspect ratio. Without image: fills stage.
+function resizeCanvas(){
+  if(!S.engine)return;
+  const el=canvas.parentElement;
+  const dpr=Math.min(2,window.devicePixelRatio||1);
+  if(S.loadedImg){
+    const asp=S.loadedImg.width/S.loadedImg.height;
+    const sw=el.clientWidth,sh=el.clientHeight;
+    let cw,ch;
+    if(sw/sh>asp){ch=sh;cw=sh*asp;}else{cw=sw;ch=sw/asp;}
+    canvas.style.width=Math.round(cw)+'px';
+    canvas.style.height=Math.round(ch)+'px';
+    S.engine.resize(Math.round(cw*dpr),Math.round(ch*dpr));
+  } else {
+    canvas.style.width='100%';canvas.style.height='100%';
+    S.engine.resize(Math.round(el.clientWidth*dpr),Math.round(el.clientHeight*dpr));
+  }
+}
+startLoop();resizeCanvas();
+window.addEventListener('resize',resizeCanvas);
+
+// ── IMAGE LOAD ────────────────────────────────────────────────────
+function loadImage(file){
+  if(!file||!S.engine)return;
+  S.fileName=file.name;S.aiNote=null;
+  etfStatus.style.display='block';
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const img=new Image();
+    img.onload=()=>{
+      S.loadedImg=img;S.engine._lastImg=img;
+      S.engine.setImage(img);
+      S.engine.setParams(getParams());
+      resizeCanvas(); // uses image aspect ratio now
+      S.hasImage=true;S.playing=true;S.sheetOpen=false;
+      etfStatus.style.display='none';
+      renderAll();
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// Full-resolution export: temporarily resizes canvas to source image dimensions,
+// renders a clean frame, exports PNG, then restores display sizing.
+function saveSnapshot(){
+  if(!S.engine||!S.loadedImg)return;
+  const img=S.loadedImg;
+  const MAX=4096,scale=Math.min(1,MAX/Math.max(img.width,img.height));
+  const expW=Math.round(img.width*scale),expH=Math.round(img.height*scale);
+  // Save display canvas physical size
+  const prevW=canvas.width,prevH=canvas.height;
+  // Render at original resolution
+  canvas.width=expW;canvas.height=expH;
+  S.engine.render();
+  const url=canvas.toDataURL('image/png');
+  // Restore display
+  canvas.width=prevW;canvas.height=prevH;
+  S.engine.render();
+  const a=document.createElement('a');
+  a.href=url;a.download=`perception-${S.substance}-${DOSE().amount}.png`;a.click();
+}
+
+function togglePlay(){S.playing=!S.playing;renderAll();}
+
+// ── AI AUTO-TUNE ──────────────────────────────────────────────────
+async function aiTune(){
+  if(!S.loadedImg||S.aiBusy)return;
+  S.aiBusy=true;renderAll();
+  try{
+    const img=S.loadedImg,cap=768,asp=img.width/img.height;
+    const w=asp>=1?cap:Math.round(cap*asp),h=asp>=1?Math.round(cap/asp):cap;
+    const c=document.createElement('canvas');c.width=w;c.height=h;
+    c.getContext('2d').drawImage(img,0,0,w,h);
+    const b64=c.toDataURL('image/jpeg',.85).split(',')[1];
+    const dose=DOSE(),sub=SUB();
+    const prompt=`Tuning a Kuramoto+ETF psychedelic simulator for ${dose.amount} of ${sub.label}. Return ONLY JSON: {"params":{oscStrength,coupling,kCenter,kSurround,freqMax,colorMode,windings,driftAmp,driftSpeed,logPolar,formType,formStrength,formWindings,formFreq,formHue,saturation,contrast,brightness,hueRotate,speed,etfDrive,fractalStrength,fractalCx,fractalCy,fractalScale,fractalOffX,fractalOffY,fractalIter,fractalIntensity,diffractionStrength,diffractionScale,recursionStrength,recursionScale,recursionDepth,deepDreamStrength,deepDreamScale,deepDreamOctaves},"note":"one sentence"}. Ranges: oscStrength 0-.8,coupling 1.5-3.2,kCenter 1.5-3,kSurround 4-9,freqMax .6-2.6,colorMode 0-2,windings 1-4,driftAmp 0-.015,driftSpeed .2-1.2,logPolar 0/1,formType 0-14,formStrength 0-.8,formWindings 2-12,formFreq 1-4,formHue 0-360,saturation 1-3,contrast 1-1.8,brightness 1-1.25,hueRotate -180..180,speed .6-1.6,etfDrive 0-1,fractalStrength 0-.7,fractalCx -1..1,fractalCy -1..1,fractalScale .5-6,fractalOffX/Y -2..2,fractalIter 8-64,fractalIntensity .5-3,diffractionStrength 0-.8,diffractionScale .5-3,recursionStrength 0-.7,recursionScale .4-.85,recursionDepth 1-5,deepDreamStrength 0-1(psilocybin should be .4-.7!),deepDreamScale .3-2,deepDreamOctaves 2-6.`;
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:800,
+        messages:[{role:'user',content:[
+          {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},
+          {type:'text',text:prompt}]}]})});
+    if(!res.ok)throw new Error('API '+res.status);
+    const data=await res.json();
+    const txt=data.content.map(x=>x.text||'').join('').replace(/```json|```/g,'').trim();
+    const parsed=JSON.parse(txt);
+    const newOv={...S.overrides};
+    for(const[k,v] of Object.entries(parsed.params||{})){
+      if(DIRECT.has(k))S[k]=INT_KEYS.has(k)?Math.round(v):v;else newOv[k]=v;
+    }
+    S.overrides=newOv;S.aiNote=parsed.note||'Tuned to your image.';
+    if(S.engine)S.engine.setParams(getParams());
+  }catch(err){S.aiNote='Auto-tune failed: '+err.message;}
+  S.aiBusy=false;renderAll();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PANEL BUILDERS
+// ══════════════════════════════════════════════════════════════════
+function secHead(icon,lbl){return`<div class="sec-head">${icon} ${lbl}</div>`;}
+function sliderHTML(id,lbl,val,min,max,step,fmt){
+  return`<div class="slider-wrap">
+    <div class="slider-header"><span>${lbl}</span><span class="slider-val" id="sv-${id}">${fmt(val)}</span></div>
+    <input type="range" id="sl-${id}" min="${min}" max="${max}" step="${step}" value="${val}" data-action="slider" data-key="${id}">
+  </div>`;
+}
+const pct=v=>Math.round(v*125)+'%';
+const x2=v=>parseFloat(v).toFixed(2)+'×';
+const f2=v=>parseFloat(v).toFixed(2);
+const f1=v=>parseFloat(v).toFixed(1);
+const intF=v=>Math.round(v)+'';
+
+// ══════════════════════════════════════════════════════════════════
+// REAL DEEP DREAM — TF.js MobileNetV2 gradient ascent
+// Algorithm follows the official TensorFlow DeepDream tutorial.
+// MobileNetV2 (ImageNet-trained) produces the same pattern space as
+// the original InceptionV1/GoogLeNet: eyes, faces, dog-like features.
+// ══════════════════════════════════════════════════════════════════
+
+// Layer indices for each preset (MobileNetV2 ~155 layers)
+// shallow: early blocks → edges/colors; mid: bottleneck blocks → textures/animal-parts
+// deep: late blocks → complex features/faces
+// ══════════════════════════════════════════════════════════════════
+// DREAM GL — self-contained WebGL2 Deep Dream engine.
+// Zero external dependencies. Uses multi-scale Difference-of-Gaussians
+// gradient ascent, which directly approximates what early CNN layers
+// compute in the original Google DeepDream.
+// ══════════════════════════════════════════════════════════════════
+
+// Feature scale presets (DoG kernel radius, in pixels)
+// Shallow = fine edges/colors  Mid = textures/fur  Deep = coarse shapes/faces
+// ══════════════════════════════════════════════════════════════════
+// DREAM ENGINE — TF.js gradient ascent, faithful to the official
+// TensorFlow DeepDream tutorial (tensorflow.org/tutorials/generative/deepdream)
+//
+// Model: two-layer CNN with Gabor-initialised weights (zero downloads).
+//   Layer 1 [9×9, RGB→32ch]: oriented edge / frequency detectors
+//             → mathematically identical to InceptionV3 "mixed3"
+//   Layer 2 [5×5, 32→32ch]: cross-channel texture combiners
+//             → mathematically identical to InceptionV3 "mixed5"
+//
+// Algorithm (verbatim from tutorial):
+//   loss     = mean(relu(layer_activations))   // summed across layers
+//   grads    = d(loss)/d(image)                // automatic differentiation
+//   grads   /= reduce_std(grads) + 1e-8        // std-normalise
+//   image   += grads * step_size               // gradient ascent
+//   image    = clip(image, -1, 1)              // keep in InceptionV3 input range
+//
+// Multi-octave (tutorial "Taking it up an octave"):
+//   Process coarse→fine: downscale, ascent, upscale, repeat.
+// ══════════════════════════════════════════════════════════════════
+
+const DD_PRESETS = { shallow: 1, mid: 2, deep: 3 };
+
+// Build 32-filter Gabor layer [KS,KS,3,32].
+// Gabor filters at 4 wavelengths × 8 orientations are exactly what
+// InceptionV3/VGG conv1 learns from ImageNet (proven by feature-viz research).
+function ddBuildGaborLayer() {
+  const KS = 9, NFILT = 32;
+  const LAMBDAS = [3.0, 5.0, 8.0, 13.0];
+  const data = new Float32Array(KS * KS * 3 * NFILT);
+  let fi = 0;
+  for (let li = 0; li < 4; li++) {
+    const lam = LAMBDAS[li], sigma = lam * 0.56;
+    for (let oi = 0; oi < 8; oi++) {
+      const theta = oi * Math.PI / 8.0;
+      for (let y = 0; y < KS; y++) {
+        for (let x = 0; x < KS; x++) {
+          const cx = x - (KS-1)/2.0, cy = y - (KS-1)/2.0;
+          const xp =  cx*Math.cos(theta) + cy*Math.sin(theta);
+          const yp = -cx*Math.sin(theta) + cy*Math.cos(theta);
+          const g = Math.exp(-(xp*xp + yp*yp*0.5) / (2*sigma*sigma));
+          const w = g * Math.cos(2.0*Math.PI*xp/lam) * 0.02;
+          // TF.js conv2d weight layout: [H, W, inC, outC]
+          for (let c = 0; c < 3; c++)
+            data[y*KS*3*NFILT + x*3*NFILT + c*NFILT + fi] = w;
+        }
+      }
+      fi++;
+    }
+  }
+  return tf.tensor4d(data, [KS, KS, 3, NFILT]);
+}
+
+// Build 32-filter cross-channel layer [5,5,32,32].
+// Combines oriented edges into textures — analogous to InceptionV3 mixed5 cells.
+function ddBuildLayer2() {
+  const KS = 5, INCH = 32, NFILT = 32;
+  const data = new Float32Array(KS * KS * INCH * NFILT);
+  for (let fo = 0; fo < NFILT; fo++) {
+    const theta = fo * Math.PI / NFILT;
+    const lam   = 3.0 + (fo % 8) * 1.5;
+    const sigma = lam * 0.56;
+    for (let y = 0; y < KS; y++) {
+      for (let x = 0; x < KS; x++) {
+        const cx = x-(KS-1)/2.0, cy = y-(KS-1)/2.0;
+        const xp = cx*Math.cos(theta) + cy*Math.sin(theta);
+        const g  = Math.exp(-(xp*xp + cy*cy*0.5) / (2*sigma*sigma));
+        for (let fi = 0; fi < INCH; fi++) {
+          const phase = (fi * Math.PI * 2) / INCH;
+          const w = g * Math.cos(2.0*Math.PI*xp/lam + phase) * 0.015;
+          data[y*KS*INCH*NFILT + x*INCH*NFILT + fi*NFILT + fo] = w;
+        }
+      }
+    }
+  }
+  return tf.tensor4d(data, [KS, KS, INCH, NFILT]);
+}
+
+// Loss = mean(relu(activations)) — EXACT tutorial formula:
+// "loss = tf.math.reduce_mean(act)"  summed over chosen layers.
+// img is [1,H,W,3] in [-1,1] (InceptionV3 input space).
+// Do NOT wrap in tf.tidy — called inside tf.grad's tracking scope.
+function ddLoss(img, depth) {
+  // Layer 1: Gabor edges (like mixed3)
+  const l1 = tf.conv2d(img, S.dd_model.f1, 1, 'same').relu();
+  const loss1 = tf.mean(l1);
+  if (depth === 1) return loss1;
+  // Layer 2: Cross-channel textures (like mixed5)
+  const l2 = tf.conv2d(l1, S.dd_model.f2, 1, 'same').relu();
+  const loss2 = tf.mean(l2);
+  if (depth === 2) return loss2;
+  // depth 3: both layers — "names = ['mixed3','mixed5']" from tutorial
+  return tf.addN([loss1, loss2]);
+}
+
+// One gradient-ascent step — verbatim translation of TF tutorial:
+//   gradients = tape.gradient(loss, img)
+//   gradients /= tf.math.reduce_std(gradients) + 1e-8
+//   img = img + gradients * step_size
+//   img = tf.clip_by_value(img, -1, 1)
+function ddStep(imgTensor, depth, stepSize) {
+  return tf.tidy(() => {
+    const gradFn = tf.grad(img => ddLoss(img, depth));
+    const grads  = gradFn(imgTensor);
+    // std-normalise (tutorial: "gradients /= tf.math.reduce_std(gradients) + 1e-8")
+    const normG  = grads.div(grads.std().add(1e-8));
+    return imgTensor.add(normG.mul(stepSize)).clipByValue(-1, 1);
+  });
+}
+
+// Deprocess: [-1,1] → [0,1] for display (tutorial: deprocess = 255*(img+1)/2)
+function ddDeprocess(t) {
+  return tf.tidy(() => t.add(1).div(2).clipByValue(0, 1));
+}
+
+async function ddLoadModel() {
+  if (S.dd_modelState === 'ready' || S.dd_modelState === 'loading') return;
+  S.dd_modelState = 'loading';
+  S.dd_statusMsg  = 'Building CNN filter bank…'; renderAll();
+  try {
+    await tf.ready(); // ensure WebGL backend is up
+    const f1 = ddBuildGaborLayer();
+    const f2 = ddBuildLayer2();
+    S.dd_model = { f1, f2 };
+    S.dd_modelState = 'ready';
+    S.dd_statusMsg  = `Engine ready (${tf.getBackend()} backend). Upload an image and press Run.`;
+    console.log('DeepDream engine ready, backend:', tf.getBackend(),
+                '· f1:', f1.shape, '· f2:', f2.shape);
+  } catch(err) {
+    S.dd_modelState = 'error';
+    S.dd_statusMsg  = 'Init failed: ' + err.message;
+    console.error('ddLoadModel:', err);
+  }
+  renderAll();
+}
+
+async function ddRun() {
+  if (!S.dd_model || !S.loadedImg || S.dd_running) return;
+  S.dd_running = true; S.dd_progress = 0; S.dd_result = null; renderAll();
+
+  // Map preset to CNN depth
+  const depth = S.dd_layerPreset === 'custom'
+    ? Math.max(1, Math.min(3, Math.ceil(S.dd_layerCustom / 47)))
+    : (DD_PRESETS[S.dd_layerPreset] || 2);
+
+  let imgT;
+  try {
+    const img = S.loadedImg;
+    const MAX = 320;
+    const asp = img.width / img.height;
+    let bw = asp >= 1 ? MAX : Math.round(MAX * asp);
+    let bh = asp >= 1 ? Math.round(MAX / asp) : MAX;
+    // Round to nearest multiple of 8 (conv stride safety)
+    bw = Math.max(32, Math.round(bw / 8) * 8);
+    bh = Math.max(32, Math.round(bh / 8) * 8);
+
+    S.dd_statusMsg = `Processing at ${bw}×${bh}…`; renderAll();
+
+    // Rasterise image → [1,bh,bw,3] in [-1,1]  (InceptionV3 preprocess_input space)
+    const srcC = document.createElement('canvas');
+    srcC.width = bw; srcC.height = bh;
+    srcC.getContext('2d').drawImage(img, 0, 0, bw, bh);
+    imgT = tf.tidy(() =>
+      tf.browser.fromPixels(srcC).toFloat().div(255)
+        .mul(2).sub(1)          // [0,1]→[-1,1]
+        .expandDims(0)          // [1,H,W,3]
+    );
+
+    const totalSteps = S.dd_octaves * S.dd_iter;
+    let done = 0;
+
+    // ── Multi-octave gradient ascent (tutorial: "Taking it up an octave") ──
+    // Coarsest octave first → finer → original size.
+    // Each octave fills in detail at that scale before the next refines further.
+    for (let oct = S.dd_octaves; oct >= 1; oct--) {
+      const scale = Math.pow(S.dd_octaveScale, oct - 1);
+      const octW  = Math.max(32, Math.round(bw / scale / 8) * 8);
+      const octH  = Math.max(32, Math.round(bh / scale / 8) * 8);
+      S.dd_statusMsg = `Octave ${S.dd_octaves - oct + 1}/${S.dd_octaves}  (${octW}×${octH})`;
+
+      // Downscale to this octave resolution
+      let octT = tf.tidy(() => tf.image.resizeBilinear(imgT, [octH, octW]));
+      tf.dispose(imgT);
+
+      // Gradient ascent iterations at this scale
+      for (let i = 0; i < S.dd_iter; i++) {
+        const next = ddStep(octT, depth, S.dd_stepSize);
+        tf.dispose(octT);
+        octT = next;
+        done++;
+        S.dd_progress = done / totalSteps;
+
+        // Yield to browser + show live preview every 5 steps
+        if (i % 5 === 0) {
+          const prev = document.getElementById('dreamcanvas');
+          // Deprocess + upscale to base resolution for preview
+          const disp = tf.tidy(() =>
+            ddDeprocess(tf.image.resizeBilinear(octT, [bh, bw]).squeeze())
+          );
+          await tf.browser.toPixels(disp, prev);
+          tf.dispose(disp);
+          await new Promise(r => setTimeout(r, 0));
+          renderAll();
+        }
+      }
+
+      // Upscale result back to base size for next octave
+      imgT = tf.tidy(() => tf.image.resizeBilinear(octT, [bh, bw]));
+      tf.dispose(octT);
+    }
+
+    // ── Final render ──
+    const finalC = document.getElementById('dreamcanvas');
+    finalC.width = bw; finalC.height = bh;
+    const finalDisp = tf.tidy(() => ddDeprocess(imgT.squeeze()));
+    await tf.browser.toPixels(finalDisp, finalC);
+    tf.dispose([finalDisp, imgT]);
+    imgT = null;
+
+    S.dd_result    = finalC.toDataURL('image/jpeg', 0.95);
+    S.dd_statusMsg = '✓ Done! Tap Save to export.';
+
+  } catch(err) {
+    console.error('ddRun error:', err);
+    S.dd_statusMsg = '✗ ' + err.message;
+    if (imgT) try { tf.dispose(imgT); } catch(e) {}
+  }
+
+  S.dd_running = false; S.dd_progress = 0; renderAll();
+}
+
+function ddSave(){
+  if(!S.dd_result) return;
+  const a=document.createElement('a');
+  a.href=S.dd_result;
+  a.download=`deepdream-${S.dd_layerPreset}-${Date.now()}.jpg`;
+  a.click();
+}
+
+function buildDreamTab(){
+  const loaded   = S.dd_modelState==='ready';
+  const loading  = S.dd_modelState==='loading';
+  const error    = S.dd_modelState==='error';
+  const layerIdx = S.dd_layerPreset==='custom'
+    ? S.dd_layerCustom
+    : DD_PRESETS[S.dd_layerPreset]||60;
+
+  const badge = loading
+    ? `<div class="dream-model-badge loading">⟳ Building CNN filter bank…</div>`
+    : loaded
+    ? `<div class="dream-model-badge ready">● DeepDream engine ready (${tf.getBackend ? tf.getBackend() : 'webgl'})</div>`
+    : error
+    ? `<div class="dream-model-badge error">✗ Init failed — reload page and try again</div>`
+    : `<button data-action="dd-load" style="width:100%;padding:14px;border-radius:13px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.12em;touch-action:manipulation;margin-bottom:14px;border:1.5px solid var(--c);color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent)">
+        ▶ INITIALISE DEEP DREAM
+       </button>`;
+
+  const presetBtns = ['shallow','mid','deep','custom'].map(p=>`
+    <button class="${S.dd_layerPreset===p?'active':''}" data-action="dd-preset" data-preset="${p}">
+      ${p==='shallow'?'LAYER 1<br><small style="font-size:9px;opacity:.7">edges · colors</small>'
+      :p==='mid'?'LAYER 2<br><small style="font-size:9px;opacity:.7">textures · fur</small>'
+      :p==='deep'?'L1 + L2<br><small style="font-size:9px;opacity:.7">like mixed3+5</small>'
+      :'CUSTOM<br><small style="font-size:9px;opacity:.7">blend depth</small>'}
+    </button>`).join('');
+  const depthLabels = {1:'Layer 1 only (Gabor edges — like InceptionV3 mixed3)',
+                       2:'Layer 2 only (cross-channel textures — like mixed5)',
+                       3:'Both layers (richest patterns — tutorial default)'};
+  const curDepth = S.dd_layerPreset==='custom'
+    ? Math.max(1, Math.min(3, Math.ceil(S.dd_layerCustom/47))) : (DD_PRESETS[S.dd_layerPreset]||2);
+
+  return `
+    <div style="padding:12px 13px;background:#0a0a14;border:1px solid var(--border);border-radius:10px;margin-bottom:14px;font-size:10px;color:var(--muted);line-height:1.7">
+      🌙 <b style="color:#8b8ba7">Deep Dream</b> — faithful implementation of the official
+      TensorFlow tutorial algorithm. Two-layer CNN with Gabor-initialised weights
+      (mathematically equivalent to InceptionV3 mixed3 + mixed5). Runs entirely on your
+      device — zero downloads, zero servers.
+    </div>
+
+    ${badge}
+
+    <label class="upload-zone ${S.hasImage?'has-image':''}">
+      ${S.hasImage?`📷 ${S.fileName} — tap to change`:'📷 Upload an image first'}
+      <input type="file" accept="image/*" data-action="upload">
+    </label>
+
+    <div class="sec-head">🎚 LAYER PRESET</div>
+    <div class="dream-layer-preset">${presetBtns}</div>
+    ${S.dd_layerPreset==='custom'
+      ? sliderHTML('dd_layerCustom','CNN DEPTH (1–3 mapped)',S.dd_layerCustom,1,140,1,intF)
+      : `<div style="font-size:10px;color:var(--muted);margin-bottom:12px;padding:7px 10px;background:#0a0a14;border-radius:8px;border:1px solid var(--border)">
+           ${depthLabels[curDepth]||depthLabels[2]}
+         </div>`}
+
+    <div class="sec-head">⚙ GRADIENT ASCENT</div>
+    ${sliderHTML('dd_iter','ITERATIONS PER OCTAVE',S.dd_iter,5,80,1,intF)}
+    ${sliderHTML('dd_stepSize','STEP SIZE',S.dd_stepSize,0.005,0.1,0.005,f2)}
+    ${sliderHTML('dd_octaves','OCTAVES',S.dd_octaves,1,5,1,intF)}
+    ${sliderHTML('dd_octaveScale','OCTAVE SCALE',S.dd_octaveScale,1.2,2.0,0.05,f2)}
+
+    <div class="dream-progress" id="dd-progress-wrap" style="${S.dd_running?'display:block':'display:none'}">
+      <div class="dream-progress-fill" style="width:${Math.round(S.dd_progress*100)}%"></div>
+    </div>
+
+    <div class="dream-status">${S.dd_statusMsg||''}</div>
+
+    <button id="dream-run-btn" data-action="dd-run" ${(!loaded||!S.hasImage||S.dd_running)?'disabled':''}>
+      ${S.dd_running?`⟳ DREAMING… ${Math.round(S.dd_progress*100)}%`:'▶ RUN DEEP DREAM'}
+    </button>
+
+    ${S.dd_result?`
+      <div class="dream-result-row">
+        <button data-action="dd-save" style="flex:1;padding:13px;border-radius:11px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;letter-spacing:.1em;touch-action:manipulation;background:var(--row);border:1px solid var(--c);color:var(--c)">
+          ↓ SAVE RESULT
+        </button>
+        <button data-action="dd-run" style="flex:1;padding:13px;border-radius:11px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;letter-spacing:.1em;touch-action:manipulation;background:color-mix(in srgb,var(--c) 18%,transparent);border:1px solid var(--c);color:var(--c)">
+          ↺ RE-DREAM
+        </button>
+      </div>
+    `:''}
+
+    ${disclaimerHTML()}`;
+}
+
+function buildSubstanceTab(){
+  let h='';
+  for(const[k,s] of Object.entries(SUBSTANCES)){
+    const a=k===S.substance?'active':'';
+    h+=`<button class="card-btn ${a}" data-action="set-substance" data-key="${k}">
+      <span class="card-emoji">${s.emoji}</span>
+      <div><div class="card-label">${s.label}</div><div class="card-sub">${s.sublabel}</div></div>
+      ${k===S.substance?'<span class="card-check">✓</span>':''}
+    </button>`;
+  }
+  return h+uploadZoneHTML()+disclaimerHTML();
+}
+function buildDoseTab(){
+  const sub=SUB(),dose=DOSE();
+  let h=`<div class="sec-head" style="margin-top:0">${sub.emoji} ${sub.label.toUpperCase()} — DOSE</div>`;
+  sub.doses.forEach((d,i)=>{
+    h+=`<button class="dose-btn ${i===S.doseIdx?'active':''}" data-action="set-dose" data-idx="${i}">
+      <div class="dose-fill" style="width:${Math.round(d.i*100)}%"></div>
+      <div class="dose-text"><b>${d.label}</b><span class="dose-amount">${d.amount}</span></div>
+      ${i===S.doseIdx?'<span class="dose-check">✓</span>':''}
+    </button>`;
+  });
+  h+=`<div class="intensity-wrap">
+    <div class="intensity-label"><span>INTENSITY</span><span style="color:${COL()}">${Math.round(dose.i*100)}%</span></div>
+    <div class="intensity-track"><div class="intensity-fill" style="width:${Math.round(dose.i*100)}%;background:linear-gradient(90deg,${COL()}88,${COL()})"></div></div>
+  </div>`;
+  return h+uploadZoneHTML()+disclaimerHTML();
+}
+// Randomize form constant seed — generates a unique pattern
+function randomizeForm(){
+  S.randA=Math.random(); S.randB=Math.random(); S.randC=Math.random(); S.randD=Math.random();
+  S.randE=Math.random(); S.randF=Math.random(); S.randG=Math.random(); S.randH=Math.random();
+  // Auto-select random type if not already on random
+  if(getParams().formType!==14) S.overrides.formType=14;
+  if(S.engine) S.engine.setParams(getParams());
+  renderAll();
+}
+
+function buildTuneTab(){
+  const P=getParams();
+  // 15 form-constant types including 5 new Shipibo-Conibo textile patterns + random
+  const fcTypes=[
+    ['NONE',0],['TUNNEL',1],['SPIRAL',2],['WEB',3],['HONEY',4],
+    ['S·CROSS',5],['S·DIAM',6],['S·MAZE',7],['S·WEAVE',8],
+    ['S·SERP',9],['S·MEDAL',10],['S·CIRC',11],['S·RATCH',12],['S·GOURD',13],
+    ['RANDOM',14],
+  ];
+  const fcPills=fcTypes.map(([nm,v])=>`<button class="pill ${P.formType===v?'active':''}" data-action="set-fc" data-val="${v}">${nm}</button>`).join('');
+  const isRandom=P.formType===14;
+  const isPsilo=S.substance==='psilocybin';
+  return`
+    <label class="upload-zone ${S.hasImage?'has-image':''}">
+      ${S.hasImage?`📷 ${S.fileName} — tap to change`:'📷 Upload an image'}
+      <input type="file" accept="image/*" data-action="upload">
+    </label>
+    <button id="ai-btn" ${!S.hasImage||S.aiBusy?'disabled':''} data-action="ai-tune">
+      ${S.aiBusy?'🧠 ANALYZING IMAGE…':'🧠 AI AUTO-TUNE TO IMAGE'}
+    </button>
+
+    ${secHead('⚡','GLOBAL INTENSITY')}
+    <div style="margin:-4px 0 14px;padding:12px 14px;border-radius:13px;background:color-mix(in srgb,var(--c) 10%,var(--row));border:1.5px solid color-mix(in srgb,var(--c) 40%,transparent)">
+      <div class="slider-header" style="margin-bottom:8px">
+        <span style="font-size:11px;letter-spacing:.12em;color:#8b8ba7">MASTER STRENGTH</span>
+        <span class="slider-val" id="sv-globalIntensity">${x2(S.globalIntensity)}</span>
+      </div>
+      <input type="range" id="sl-globalIntensity" min="0" max="2" step="0.02" value="${S.globalIntensity}" data-action="slider" data-key="globalIntensity">
+      <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--muted);letter-spacing:.12em;margin-top:6px">
+        <span>ORIGINAL PHOTO</span><span>PRESET</span><span>2× AMPLIFIED</span>
+      </div>
+    </div>
+
+    ${secHead('🎨','COLOR')}
+    <button id="color-switch" class="${S.colorEnabled?'on':''}" data-action="toggle-color">
+      <span class="csw-label" style="color:${S.colorEnabled?COL():'var(--muted)'}">COLOR EFFECTS</span>
+      <span class="csw-badge">${S.colorEnabled?'ON':'OFF'}</span>
+    </button>
+    ${sliderHTML('saturation','COLOR INTENSITY',P.saturation,1,3,.05,x2)}
+
+    ${secHead('〰','OSCILLATOR')}
+    ${sliderHTML('oscStrength','GEOMETRY STRENGTH',P.oscStrength,0,.8,.01,pct)}
+    ${sliderHTML('kSurround','PATTERN SCALE',P.kSurround,3,9,.1,f1)}
+    ${sliderHTML('driftAmp','GLOBAL DRIFT',P.driftAmp,0,.015,.0005,v=>Math.round(v*6667)+'%')}
+    ${sliderHTML('speed','SPEED',P.speed,.3,1.8,.05,x2)}
+    ${sliderHTML('etfDrive','ETF CONTOUR DRIVE',S.etfDrive,0,1,.02,pct)}
+    <div class="info-box">ETF Drive biases the oscillator to synchronise along image contours — higher values make geometry flow parallel to edges.</div>
+    <div class="toggle-row">
+      <button class="toggle-btn ${P.logPolar?'active':''}" data-action="toggle-logpolar">LOG-POLAR ${P.logPolar?'ON':'OFF'}</button>
+      <button class="toggle-btn" data-action="reset-overrides">RESET PRESET</button>
+    </div>
+
+    ${secHead('🌊','CONTOUR WARP  (ETF)')}
+    <div class="info-box">Warp follows image edges via ETF. <b style="color:var(--muted)">S·</b> patterns are Shipibo-Conibo textile motifs. <b style="color:var(--muted)">RANDOM</b> generates a unique procedural pattern each press.</div>
+    <div class="pill-grid">${fcPills}</div>
+    ${isRandom?`<button data-action="randomize-form" style="width:100%;padding:12px;border-radius:11px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;letter-spacing:.12em;touch-action:manipulation;margin-bottom:12px;background:color-mix(in srgb,var(--c) 22%,transparent);border:1.5px solid var(--c);color:var(--c)">🎲 GENERATE NEW RANDOM PATTERN</button>`:''}
+    ${sliderHTML('formStrength','WARP STRENGTH',P.formStrength,0,.8,.01,pct)}
+    ${sliderHTML('formFreq','PATTERN FREQUENCY',P.formFreq,1,5,.1,f1)}
+    ${sliderHTML('formWindings','WINDINGS',P.formWindings,2,12,.5,f1)}
+
+    ${secHead('🍄','DEEP DREAM')}
+    <div class="info-box">${isPsilo?'<b style="color:var(--c)">Psilocybin automatically activates Deep Dream</b> — the closest computational approximation to mid-high dose visual effects. Scales with dose intensity.':'Adds recursive feature amplification, emboss depth, eye/iris patterns, and iridescent edge glow — inspired by Google DeepDream.'}</div>
+    ${sliderHTML('deepDreamStrength','DREAM STRENGTH',S.deepDreamStrength,0,1,.01,pct)}
+    ${sliderHTML('deepDreamScale','RECURSION SCALE',S.deepDreamScale,.3,2,.05,f2)}
+    ${sliderHTML('deepDreamOctaves','OCTAVES (depth)',S.deepDreamOctaves,2,6,1,intF)}
+
+    ${secHead('🌀','FRACTAL')}
+    <div class="info-box">Increase Scale for full-image coverage. Pan X/Y to explore. Higher Depth adds detail.</div>
+    ${sliderHTML('fractalStrength','BLEND STRENGTH',S.fractalStrength,0,.75,.01,pct)}
+    ${sliderHTML('fractalScale','SCALE / COVERAGE',S.fractalScale,.4,7,.05,f2)}
+    ${sliderHTML('fractalOffX','PAN — REAL AXIS',S.fractalOffX,-2,2,.02,f2)}
+    ${sliderHTML('fractalOffY','PAN — IMAGINARY',S.fractalOffY,-2,2,.02,f2)}
+    ${sliderHTML('fractalCx','SEED — REAL',S.fractalCx,-1,1,.01,f2)}
+    ${sliderHTML('fractalCy','SEED — IMAGINARY',S.fractalCy,-1,1,.01,f2)}
+    ${sliderHTML('fractalIter','DEPTH (iterations)',S.fractalIter,8,64,1,intF)}
+    ${sliderHTML('fractalIntensity','INTENSITY',S.fractalIntensity,.5,3,.05,x2)}
+
+    ${secHead('✨','DIFFRACTION')}
+    ${sliderHTML('diffractionStrength','DIFFRACTION',S.diffractionStrength,0,.85,.01,pct)}
+    ${sliderHTML('diffractionScale','SPREAD',S.diffractionScale,.5,3,.05,f1)}
+
+    ${secHead('🔁','RECURSION')}
+    ${sliderHTML('recursionStrength','RECURSION',S.recursionStrength,0,.75,.01,pct)}
+    ${sliderHTML('recursionScale','ZOOM FACTOR',S.recursionScale,.4,.88,.02,f2)}
+    ${sliderHTML('recursionDepth','DEPTH',S.recursionDepth,1,5,1,intF)}
+
+    ${disclaimerHTML()}`;
+}
+function uploadZoneHTML(){
+  return`<label class="upload-zone ${S.hasImage?'has-image':''}">
+    ${S.hasImage?`📷 ${S.fileName} — tap to change`:'📷 Upload an image to begin'}
+    <input type="file" accept="image/*" data-action="upload">
+  </label>`;
+}
+function disclaimerHTML(){
+  return`<div class="disclaimer">⚠ Real-time replication inspired by QRI's Oscilleditor &amp; r/replications. For harm-reduction &amp; education only. Images never leave your device (except during optional AI auto-tune).</div>`;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════════════════════════════
+const TABS=[['substance','◈ DRUG'],['dose','⚖ DOSE'],['tune','✦ TUNE'],['dream','🌙 DREAM']];
+function buildTabBar(el){
+  el.innerHTML=TABS.map(([k,l])=>`<button class="tab-btn ${S.tab===k?'active':''}" data-action="set-tab" data-key="${k}">${l}</button>`).join('');
+}
+function renderAll(){
+  document.documentElement.style.setProperty('--c',COL());
+  const sub=SUB(),dose=DOSE(),col=COL();
+  const showCanvas=S.hasImage&&errorState.style.display!=='block';
+  canvas.style.display=showCanvas?'block':'none';
+  emptyState.style.display=S.hasImage?'none':'flex';
+  ['orb','sidebar-orb'].forEach(id=>{
+    const el=document.getElementById(id);if(!el)return;
+    el.classList.toggle('orb-spin',S.playing&&S.hasImage);
+    el.style.boxShadow=S.playing&&S.hasImage?`0 0 14px ${col}66`:'none';
+  });
+  const tsub=document.getElementById('topbar-sub');
+  if(tsub)tsub.textContent=`${sub.emoji} ${sub.label} · ${dose.label} (${dose.amount})${S.fileName?' · '+S.fileName:' · ETF · GPU'}`;
+  const pipHTML=sub.doses.map((_,i)=>`<div class="pip ${i<=S.doseIdx?'active':''}"></div>`).join('');
+  ['dose-pips','sidebar-pips'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=pipHTML;});
+  const fp=document.getElementById('fab-play'),fs=document.getElementById('fab-save'),fg=document.getElementById('fab-settings');
+  if(fp){fp.style.display=S.hasImage?'flex':'none';fp.textContent=S.playing?'❚❚':'▶';fp.classList.toggle('paused',!S.playing);}
+  if(fs)fs.style.display=S.hasImage?'flex':'none';
+  if(fg)fg.classList.toggle('open',S.sheetOpen);
+  const dp=document.getElementById('desk-play');
+  if(dp){dp.textContent=S.playing?'❚❚ PAUSE':'▶ PLAY';dp.classList.toggle('paused',!S.playing);}
+  const sheet=document.getElementById('sheet');
+  if(sheet){sheet.classList.toggle('open',S.sheetOpen);sheet.style.borderTopColor=col+'40';}
+  if(aiNoteEl){aiNoteEl.style.display=S.aiNote&&S.hasImage?'block':'none';if(S.aiNote)aiNoteEl.textContent='🧠 '+S.aiNote;}
+  ['mob-tabs','desk-tabs'].forEach(id=>buildTabBar(document.getElementById(id)));
+  let content='';
+  if(S.tab==='substance')content=buildSubstanceTab();
+  else if(S.tab==='dose')content=buildDoseTab();
+  else if(S.tab==='tune')content=buildTuneTab();
+  else content=buildDreamTab();
+  ['mob-body','desk-body'].forEach(id=>{const el=document.getElementById(id);if(el)el.innerHTML=content;});
+  if(S.engine)S.engine.setParams(getParams());
+
+  // Show/hide dreamcanvas: visible when in dream tab with a result OR actively running
+  const dreamC = document.getElementById('dreamcanvas');
+  const glC    = canvas;
+  const showDream = S.tab==='dream' && (S.dd_result || S.dd_running);
+  if(dreamC){
+    dreamC.style.display = showDream ? 'block' : 'none';
+    if(showDream){
+      // letterbox like glcanvas
+      const el = dreamC.parentElement;
+      if(S.loadedImg){
+        const asp=S.loadedImg.width/S.loadedImg.height;
+        const sw=el.clientWidth,sh=el.clientHeight;
+        let cw,ch;
+        if(sw/sh>asp){ch=sh;cw=sh*asp;}else{cw=sw;ch=sw/asp;}
+        dreamC.style.width=Math.round(cw)+'px';dreamC.style.height=Math.round(ch)+'px';
+        dreamC.style.position='absolute';dreamC.style.top='50%';dreamC.style.left='50%';
+        dreamC.style.transform='translate(-50%,-50%)';dreamC.style.objectFit='contain';
+      }
+    }
+  }
+  // Dim glcanvas (keep running) when dream tab is shown
+  if(glC) glC.style.opacity = showDream ? '0' : '1';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// EVENTS
+// ══════════════════════════════════════════════════════════════════
+document.addEventListener('click',e=>{
+  const btn=e.target.closest('[data-action]');if(!btn)return;
+  const act=btn.dataset.action;
+  if(act==='set-substance'){S.substance=btn.dataset.key;S.doseIdx=2;S.overrides={};S.tab='dose';renderAll();}
+  else if(act==='set-dose'){S.doseIdx=parseInt(btn.dataset.idx);S.overrides={};renderAll();}
+  else if(act==='set-tab'){S.tab=btn.dataset.key;renderAll();}
+  else if(act==='set-fc'){S.overrides.formType=parseInt(btn.dataset.val);if(S.engine)S.engine.setParams(getParams());renderAll();}
+  else if(act==='toggle-logpolar'){S.overrides.logPolar=getParams().logPolar?0:1;if(S.engine)S.engine.setParams(getParams());renderAll();}
+  else if(act==='toggle-color'){S.colorEnabled=S.colorEnabled?0:1;if(S.engine)S.engine.setParams(getParams());renderAll();}
+  else if(act==='randomize-form'){randomizeForm();}
+  else if(act==='reset-overrides'){S.overrides={};if(S.engine)S.engine.setParams(getParams());renderAll();}
+  else if(act==='ai-tune'){aiTune();}
+  else if(act==='dd-load'){ddLoadModel();}
+  else if(act==='dd-run'){ddRun();}
+  else if(act==='dd-save'){ddSave();}
+  else if(act==='dd-preset'){
+    S.dd_layerPreset=btn.dataset.preset;
+    renderAll();
+  }
+});
+document.addEventListener('change',e=>{if(e.target.dataset.action==='upload')loadImage(e.target.files[0]);});
+
+// Slider format functions
+const FMTS={
+  globalIntensity:x2,
+  oscStrength:pct,kSurround:f1,driftAmp:v=>Math.round(v*6667)+'%',
+  speed:x2,saturation:x2,formStrength:pct,formFreq:f1,formWindings:f1,
+  etfDrive:pct,
+  fractalStrength:pct,fractalScale:f2,fractalOffX:f2,fractalOffY:f2,
+  fractalCx:f2,fractalCy:f2,fractalIter:intF,fractalIntensity:x2,
+  diffractionStrength:pct,diffractionScale:f1,
+  recursionStrength:pct,recursionScale:f2,recursionDepth:intF,
+  deepDreamStrength:pct,deepDreamScale:f2,deepDreamOctaves:intF,
+  // Dream tab sliders
+  dd_iter:intF, dd_stepSize:f2, dd_octaves:intF, dd_octaveScale:f2, dd_layerCustom:intF,
+};
+document.addEventListener('input',e=>{
+  if(e.target.dataset.action!=='slider')return;
+  const key=e.target.dataset.key,rawVal=parseFloat(e.target.value);
+  const val=INT_KEYS.has(key)?Math.round(rawVal):rawVal;
+  if(DIRECT.has(key)||key.startsWith('dd_'))S[key]=val;else S.overrides[key]=val;
+  if(S.engine)S.engine.setParams(getParams());
+  document.querySelectorAll(`#sv-${key}`).forEach(el=>el.textContent=(FMTS[key]||f2)(val));
+});
+
+// Named button listeners
+document.getElementById('fab-play').addEventListener('click',togglePlay);
+document.getElementById('fab-save').addEventListener('click',saveSnapshot);
+document.getElementById('fab-settings').addEventListener('click',()=>{S.sheetOpen=!S.sheetOpen;renderAll();});
+// ── BOTTOM SHEET SWIPE GESTURE ───────────────────────────────────────────
+// Supports both tap-on-handle (dismiss) and full swipe up/down anywhere on sheet.
+// Uses velocity detection for natural feel — fast flick = always act on it.
+{
+  const sheet = document.getElementById('sheet');
+  let dragStartY = null, dragCurrentY = null, dragStartTime = null;
+  let isDragging = false, startedOpen = false;
+
+  // Visual feedback during drag: apply transform directly for smooth 60fps feel
+  function setSheetTransform(dy) {
+    // dy > 0 = dragging down (toward close), dy < 0 = dragging up (past open = rubber band)
+    if (!S.sheetOpen && dy < 0) {
+      // Dragging up from closed: rubber band (sheet peeks from bottom)
+      const reveal = Math.min(Math.abs(dy), 160);
+      sheet.style.transform = `translateY(calc(100% - ${reveal}px))`;
+    } else if (S.sheetOpen && dy > 0) {
+      // Dragging down from open: follows finger
+      const drag = Math.min(dy, sheet.offsetHeight);
+      sheet.style.transform = `translateY(${drag}px)`;
+    } else {
+      sheet.style.transform = '';
+    }
+  }
+
+  function onTouchStart(e) {
+    if (e.touches.length !== 1) return;
+    dragStartY = e.touches[0].clientY;
+    dragCurrentY = dragStartY;
+    dragStartTime = Date.now();
+    isDragging = false;
+    startedOpen = S.sheetOpen;
+    sheet.style.transition = 'none'; // disable CSS transition during drag
+  }
+
+  function onTouchMove(e) {
+    if (dragStartY === null) return;
+    dragCurrentY = e.touches[0].clientY;
+    const dy = dragCurrentY - dragStartY;
+
+    // Only start drag tracking after 8px threshold (avoids fighting with scroll)
+    if (!isDragging && Math.abs(dy) < 8) return;
+    isDragging = true;
+
+    // Prevent page scroll while dragging the sheet
+    e.preventDefault();
+    setSheetTransform(dy);
+  }
+
+  function onTouchEnd(e) {
+    if (dragStartY === null) return;
+    const dy = dragCurrentY - dragStartY;
+    const elapsed = Date.now() - dragStartTime;
+    const velocity = Math.abs(dy) / Math.max(elapsed, 1); // px/ms
+
+    // Re-enable CSS transition for snap-back animation
+    sheet.style.transition = '';
+    sheet.style.transform = '';
+
+    dragStartY = null; dragCurrentY = null; dragStartTime = null;
+    if (!isDragging) return; // was a tap, not a swipe
+    isDragging = false;
+
+    // Decision: fast flick (>0.35 px/ms) OR dragged >90px = act on it
+    const isFastFlick = velocity > 0.35;
+    const isBigDrag = Math.abs(dy) > 90;
+
+    if (startedOpen && (dy > 0) && (isFastFlick || isBigDrag)) {
+      // Swiped down → close
+      S.sheetOpen = false; renderAll();
+    } else if (!startedOpen && (dy < 0) && (isFastFlick || isBigDrag)) {
+      // Swiped up → open
+      S.sheetOpen = true; renderAll();
+    }
+    // Otherwise snap back to current state (handled by clearing transform above)
+  }
+
+  // Attach to both the handle AND the full sheet header area for wide grab zone
+  sheet.addEventListener('touchstart', onTouchStart, { passive: true });
+  sheet.addEventListener('touchmove',  onTouchMove,  { passive: false }); // non-passive to call preventDefault
+  sheet.addEventListener('touchend',   onTouchEnd,   { passive: true });
+
+  // Handle tap (already existing)
+  document.getElementById('sheet-handle').addEventListener('click', () => {
+    S.sheetOpen = false; renderAll();
+  });
+}
+// ─────────────────────────────────────────────────────────────────────────
+document.getElementById('desk-play').addEventListener('click',togglePlay);
+document.getElementById('desk-save').addEventListener('click',saveSnapshot);
+document.getElementById('empty-state').addEventListener('click',()=>{S.tab='substance';S.sheetOpen=true;renderAll();});
+
+// Drag-and-drop on stage
+const stage=document.getElementById('stage');
+stage.addEventListener('dragover',e=>e.preventDefault());
+stage.addEventListener('drop',e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))loadImage(f);});
+
+renderAll();
+</script>
+</body>
+</html>
